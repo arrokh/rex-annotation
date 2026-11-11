@@ -16,7 +16,7 @@ class GitignoreTests(unittest.TestCase):
                        '.venv/bin/python', 'test.log', '.pi/sessions/session.jsonl', '.codex/auth.json', '.claude/settings.json',
                        'sessions/private.jsonl', 'state/binding.json', '.env', '.env.local', 'private.key', 'auth.json',
                        'credentials.json', 'secrets.json', '.DS_Store']
-            kept = ['LICENSE', 'README.md', 'package.json', 'bin/rex-annotation', '.github/workflows/ci.yml',
+            kept = ['LICENSE', 'README.md', 'package.json', 'Formula/rex-annotation.rb', 'bin/rex-annotation', '.github/workflows/ci.yml',
                     '.claude-plugin/plugin.json', 'hooks/hooks.json', 'rex/annotate.lua', '.env.example',
                     'integrations/codex/skills/rex-annotation/SKILL.md', 'integrations/pi/extensions/index.js',
                     'integrations/tests/fixtures/codex_session.jsonl', 'integrations/tests/fixtures/claude_session.jsonl']

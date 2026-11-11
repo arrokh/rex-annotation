@@ -1,5 +1,9 @@
 # Changelog
 
+## Unreleased
+
+- Maintain the Homebrew formula in this repository; add explicit custom-tap installation and legacy-tap migration steps.
+
 ## 0.1.1
 
 - Use native macOS libproc for process identity; no setuid ps execution in sandboxed hooks.

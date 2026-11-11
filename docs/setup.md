@@ -19,14 +19,17 @@ fake-native E2E developer test, not normal plugin use.
 ## Homebrew
 
 ```sh
-brew install arrokh/tap/rex-annotation
+brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation
+brew install arrokh/rex-annotation/rex-annotation
 rex-annotation install --detect --reload-rex
 rex-annotation status
 ```
 
-The tap is [arrokh/homebrew-tap](https://github.com/arrokh/homebrew-tap). Brew
+The [formula](../Formula/rex-annotation.rb) lives in this same repository. The
+explicit tap URL is required because the repo is not named `homebrew-*`. Brew
 installs code, Python and Neovim; it does not write to your user configuration.
-Install Rex and the coding-agent CLIs separately.
+Install Rex and the coding-agent CLIs separately. Existing `arrokh/tap` users
+should follow the [migration steps](homebrew.md#migrate-from-the-old-tap).
 
 ## Source checkout
 

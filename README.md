@@ -8,7 +8,8 @@ macOS · [MIT](LICENSE)
 ## Install
 
 ```sh
-brew install arrokh/tap/rex-annotation
+brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation
+brew install arrokh/rex-annotation/rex-annotation
 rex-annotation install --detect --reload-rex
 rex-annotation status
 ```
@@ -18,7 +19,7 @@ Install Rex (including its CLI) and your chosen agent CLIs separately.
 Setup detects installed agents and reloads **Rex config only**—never Pi or another
 agent. Codex hook approval remains manual in `/hooks`.
 
-Using a source checkout instead? See [setup](docs/setup.md).
+[Migrate an old tap](docs/homebrew.md#migrate-from-the-old-tap) or see [source setup](docs/setup.md).
 
 ## Use
 

@@ -32,3 +32,5 @@ jobs:
           python3 scripts/brew-package.py
           ruby -c dist/homebrew/rex-annotation.rb
           brew ruby -e 'require "formula"; load ARGV.fetch(0); puts RexAnnotation.name' "$PWD/dist/homebrew/rex-annotation.rb"
+          ruby -c Formula/rex-annotation.rb
+          brew ruby -e 'require "formula"; load ARGV.fetch(0); puts RexAnnotation.name' "$PWD/Formula/rex-annotation.rb"

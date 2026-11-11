@@ -12,6 +12,7 @@ import tarfile
 
 ROOT = Path(__file__).resolve().parent.parent
 # Package only project resources; never include .git, local state, or arbitrary files.
+# Formula/ refers to an already-published archive; exclude it to avoid a self-hash cycle.
 RESOURCES = ("README.md", "LICENSE", "CHANGELOG.md", "package.json", "bin", "rex", "scripts", "integrations", "hooks", ".claude-plugin", "tests", "docs")
 
 

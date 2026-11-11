@@ -3,7 +3,8 @@
 ## Install or upgrade
 
 ```sh
-brew install arrokh/tap/rex-annotation
+brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation
+brew install arrokh/rex-annotation/rex-annotation
 rex-annotation install --detect --reload-rex
 rex-annotation status
 ```
@@ -12,18 +13,43 @@ For an existing installation:
 
 ```sh
 brew update
-brew upgrade rex-annotation
+brew upgrade arrokh/rex-annotation/rex-annotation
 rex-annotation status
 ```
 
-The [tap](https://github.com/arrokh/homebrew-tap) uses the versioned archive from
-[GitHub releases](https://github.com/arrokh/rex-annotation/releases), with its
-real SHA-256 checksum and MIT license. Brew installs Python and Neovim. Rex and
-the selected coding-agent CLIs must be installed separately.
+The [formula](../Formula/rex-annotation.rb) lives in this same repository and
+uses a checksummed versioned [GitHub release](https://github.com/arrokh/rex-annotation/releases).
+The explicit tap URL is needed because Homebrew otherwise assumes a separate
+`homebrew-rex-annotation` repository. Future `brew update` calls retain this URL.
+Brew installs Python and Neovim. Rex and the selected coding-agent CLIs must be
+installed separately.
 
 Brew installs program files only. User configuration is created by the explicit
 setup command; there is no `post_install` modification of your home directory.
 `--reload-rex` validates and activates Rex config, never an agent process.
+
+## Migrate from the old tap
+
+For an installation from `arrokh/tap`, switch its Homebrew receipt before removing
+the legacy tap. Do not uninstall the plugin first:
+
+```sh
+brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation
+brew reinstall arrokh/rex-annotation/rex-annotation
+brew test arrokh/rex-annotation/rex-annotation
+brew cleanup --dry-run rex-annotation # review obsolete plugin versions first
+brew cleanup rex-annotation
+brew untap arrokh/tap
+rex-annotation status
+```
+
+Untap only after reinstall and test succeed. Homebrew checks receipts in older
+installed versions too; the scoped cleanup removes obsolete plugin versions, not
+user configuration. Review its dry-run first. Do not force an untap that still
+reports installed packages; keep the old tap until their receipts are resolved.
+The stable `opt` path and existing agent/Rex configuration stay unchanged; no agent reload or authentication change
+is needed. The old repository is archived with a migration pointer and a frozen
+formula for historical links. All future formula updates happen here.
 
 ## Upgrade-safe paths
 
@@ -54,7 +80,9 @@ Use the actual version from `package.json`. The generator produces:
 Only allowed project resources selected by Git are included; ignored caches,
 local state, credentials, logs and generated packages stay out. Upload the exact
 archive to the matching release, download it, and compare its SHA before updating
-`Formula/rex-annotation.rb` in the tap. Never substitute an unverified checksum.
+`Formula/rex-annotation.rb` in this repository. Never substitute an unverified
+checksum or replace an existing release archive. The formula is excluded from
+the archive to avoid a circular checksum dependency.
 
 ```sh
 ruby -c dist/homebrew/rex-annotation.rb
@@ -62,7 +90,8 @@ brew ruby -e 'require "formula"; load ARGV.fetch(0); puts RexAnnotation.name' \
   "$PWD/dist/homebrew/rex-annotation.rb"
 ```
 
-These validate Ruby/the DSL, not a full install. `brew test rex-annotation` also
+Also validate the committed `Formula/rex-annotation.rb` after updating it.
+These validate Ruby/the DSL, not a full install. `brew test arrokh/rex-annotation/rex-annotation` also
 checks fresh-HOME setup/status with a fake Rex CLI and real packaged dependencies.
 It does not send coding-agent requests or modify production user configuration.
 
