@@ -32,6 +32,7 @@ python3 scripts/test-rex-annotate-live.py --agents
 ## Layout
 
 ```text
+Formula/             Published Homebrew formula, maintained in this same repository
 bin/                 Opt-in native CLI launcher, preserving Rex process binding
 .claude-plugin/      Root Claude Code plugin manifest
 hooks/               Root Claude Code lifecycle configuration
@@ -57,8 +58,10 @@ Pi process's socket. Native integration guide documents owned metadata cleanup.
 3. Build the reproducible archive with `scripts/brew-package.py --source-url` set
    to the exact versioned GitHub release asset URL; verify its SHA-256.
 4. Publish the tested commit/tag and upload the archive to the matching GitHub release.
-5. Download the public asset and verify its digest before updating the tap formula.
-6. Run `brew test rex-annotation` and a fresh-HOME setup smoke before advertising the release.
+5. Download the public asset and verify its digest before updating `Formula/rex-annotation.rb`
+   in this repository. Do not rebuild/replace a published archive to update its formula.
+6. Run `brew test arrokh/rex-annotation/rex-annotation` and a fresh-HOME setup smoke
+   before advertising the release.
 
 Publication uses the operator's authorized GitHub CLI configuration. No token is
 stored in project files. CI runs offline unit tests; live Rex tests are opt-in.

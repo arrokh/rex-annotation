@@ -2,6 +2,7 @@ import hashlib
 import importlib.util
 import json
 from pathlib import Path
+import re
 import shutil
 import subprocess
 import sys
@@ -33,6 +34,7 @@ class BrewPackageTests(unittest.TestCase):
             for name in ("LICENSE", "CHANGELOG.md", ".claude-plugin/plugin.json", "hooks/hooks.json", "integrations/pi/extensions/index.js", "bin/rex-annotation"):
                 self.assertIn(prefix + name, names)
             self.assertTrue(all("/.git/" not in name and "__pycache__" not in name and "/dist/" not in name for name in names))
+            self.assertFalse(any(name.startswith(prefix + "Formula/") for name in names))
             body = formula.read_text()
             self.assertIn(archive.as_uri(), body)
             self.assertIn(first_hash, body)
@@ -47,6 +49,19 @@ class BrewPackageTests(unittest.TestCase):
             if ruby:
                 result = subprocess.run([ruby, "-c", str(formula)], capture_output=True, text=True, timeout=10)
                 self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_committed_formula_matches_generator_and_published_release_metadata(self):
+        body = (ROOT / "Formula/rex-annotation.rb").read_text()
+        version_match = re.search(r'^  version "([^"]+)"$', body, re.MULTILINE)
+        digest_match = re.search(r'^  sha256 "([0-9a-f]{64})"$', body, re.MULTILINE)
+        self.assertIsNotNone(version_match)
+        self.assertIsNotNone(digest_match)
+        version = version_match.group(1)
+        self.assertRegex(version, r'^[0-9]+\.[0-9]+\.[0-9]+(?:[-+][a-zA-Z0-9.-]+)?$')
+        url = f'https://github.com/arrokh/rex-annotation/releases/download/v{version}/rex-annotation-{version}.tar.gz'
+        expected = PACKAGE.formula_for(ROOT / "unused.tar.gz", digest_match.group(1), version, url)
+        self.assertEqual(body, expected)
+        # The formula tracks the last published asset, not an unreleased package version.
 
     def test_release_archive_honors_gitignore_inside_resource_directories(self):
         with tempfile.TemporaryDirectory() as directory:
