@@ -56,6 +56,19 @@ Claude's SessionStart/UserPromptSubmit hooks register its exact
 `session_id`/`transcript_path`; Stop refreshes metadata and SessionEnd removes
 the matching binding. Subagent events are ignored.
 
+### Claude through CUX
+
+Run `cux` or `cux run` normally after the same `--claude`/`--detect` setup. CUX
+is a Claude launcher, not a fourth agent. Detection works with CUX alone on PATH.
+The foreground CUX PTY wrapper owns delivery; the native Claude child's PID/start
+identity owns transcript validity. Child exit makes the old binding unusable, and
+a resumed child registers again even when its conversation id stays the same.
+A delayed old child's SessionEnd cannot remove the resumed child's binding.
+
+Use the same `CLAUDE_CONFIG_DIR` at setup that CUX/Claude uses. Account enrollment,
+credentials, refresh and switching remain entirely under CUX control. Tests use a
+synthetic PTY supervisor and child restart; no real CUX accounts are accessed.
+
 ### Automatic Rex binding
 
 Ordinary `codex` and `claude` commands inherit `REX_SESSION` and `REX_BLOCK` from

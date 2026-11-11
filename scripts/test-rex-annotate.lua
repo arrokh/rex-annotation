@@ -251,10 +251,51 @@ test("annotated spans use exact UTF-8 byte ranges and linewise ranges include ne
   session:close(true)
 end)
 
+test("detail help remains complete through resize without changing snapshot bytes", function()
+  local view = dofile(root .. "annotate_view.lua")
+  local snapshot = "first line\nsecond é line\nthird"
+  local session = view.open(snapshot, { block_id = "b" }, {}, string.rep("detail%猫", 12))
+  local header_win
+  for _, candidate in ipairs(vim.api.nvim_list_wins()) do
+    if candidate ~= vim.api.nvim_get_current_win() then header_win = candidate end
+  end
+  assert(header_win)
+  for _, size in ipairs({ { 40, 20 }, { 60, 24 }, { 120, 35 }, { 40, 20 } }) do
+    vim.o.columns, vim.o.lines = size[1], size[2]
+    vim.api.nvim_exec_autocmds("VimResized", {})
+    vim.cmd("redraw")
+    local header_lines = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(header_win), 0, -1, false)
+    local rendered = table.concat(header_lines, "\n")
+    assert(#header_lines <= vim.api.nvim_win_get_height(header_win), "header rows are vertically clipped")
+    for _, line in ipairs(header_lines) do
+      assert(vim.fn.strdisplaywidth(line) <= vim.api.nvim_win_get_width(header_win), "header line is horizontally clipped")
+    end
+    for _, help in ipairs({ "v/V select", "Enter note", "m edit", "p preview", "y copy", "s insert", "S send now", "q close" }) do
+      assert(rendered:find(help, 1, true), "missing header action " .. help)
+    end
+    assert(vim.api.nvim_win_get_height(header_win) >= 2)
+    assert(vim.api.nvim_win_get_height(header_win) < size[2])
+  end
+  eq(snapshot, table.concat(vim.api.nvim_buf_get_lines(session.source, 0, -1, false), "\n"))
+  local header_buf = vim.api.nvim_win_get_buf(header_win)
+  session:close(true)
+  eq(false, vim.api.nvim_buf_is_valid(header_buf))
+end)
+
 test("normal Enter opens the current logical line as a newline-inclusive default", function()
   local view = dofile(root .. "annotate_view.lua")
   local session = view.open("first\ncurrent line\nlast", { block_id = "block%source" }, {}, "Codex% REPLY")
-  assert(vim.wo[0].winbar:find("Codex%% REPLY", 1, true))
+  local header_win
+  for _, candidate in ipairs(vim.api.nvim_list_wins()) do
+    if candidate ~= vim.api.nvim_get_current_win() then header_win = candidate end
+  end
+  assert(header_win and vim.api.nvim_win_is_valid(header_win))
+  local header_lines = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(header_win), 0, -1, false)
+  eq("Codex% REPLY", header_lines[1])
+  local help = table.concat(header_lines, "\n")
+  for _, action in ipairs({ "v/V select", "Enter note", "m edit", "p preview", "y copy", "s insert", "S send now", "q close" }) do
+    assert(help:find(action, 1, true), action)
+  end
   assert(vim.wo[0].statusline:find("block%%source", 1, true))
   vim.api.nvim_win_set_cursor(0, { 2, 0 })
   vim.fn.feedkeys(vim.keycode("<CR>") .. "explain" .. vim.keycode("<C-s>"), "xt")

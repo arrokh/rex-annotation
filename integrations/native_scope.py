@@ -21,6 +21,7 @@ REX_TIMEOUT_SECONDS = 1.6
 MAX_ANCESTRY_DEPTH = 64
 
 ProcessInfo = namedtuple("ProcessInfo", "pid parent_pid uid start_identity path", defaults=[""])
+NativeScope = namedtuple("NativeScope", "rex_session rex_block pid native_child_pid", defaults=[None])
 
 
 def _linux_process_info(pid: int) -> ProcessInfo:
@@ -212,7 +213,7 @@ def _recognized_agent(process: Dict[str, Any]) -> Optional[str]:
     base = path.rsplit("/", 1)[-1]
     if base == "codex":
         return "codex"
-    if base == "claude" or re.search(r"/claude/versions/[0-9.]+$", path):
+    if base in ("claude", "cux") or re.search(r"/claude/versions/[0-9.]+$", path):
         return "claude"
     return None
 
@@ -236,9 +237,9 @@ def _positive_pid(value: str) -> int:
     return pid
 
 
-def rex_scope(agent: str, environ: Optional[Dict[str, str]] = None,
-              hook_pid: Optional[int] = None):
-    """Return exact (Rex session, block, PID), or None outside the owning agent."""
+def resolve_scope(agent: str, environ: Optional[Dict[str, str]] = None,
+                  hook_pid: Optional[int] = None):
+    """Resolve the foreground owner and any CUX-managed native Claude child."""
     if agent not in ("codex", "claude"):
         raise ReplyError("unsupported native agent")
     env = os.environ if environ is None else environ
@@ -262,11 +263,44 @@ def rex_scope(agent: str, environ: Optional[Dict[str, str]] = None,
         info = _process_info(pid)
     except (ReplyError, OSError):
         return None
+    if agent == "claude" and info.path.rsplit("/", 1)[-1] == "cux":
+        child = _cux_native_child(pid, info.start_identity, caller)
+        return NativeScope(session, block, pid, child) if child is not None else None
     if not explicit and _agent_path(info.path) != agent:
         return None
     if not _is_ancestor(pid, info.start_identity, caller, agent):
         return None
-    return session, block, pid
+    return NativeScope(session, block, pid)
+
+
+def rex_scope(agent: str, environ=None, hook_pid=None):
+    """Compatibility tuple for helpers that do not need a native child binding."""
+    scope = resolve_scope(agent, environ, hook_pid)
+    return tuple(scope[:3]) if scope is not None else None
+
+
+def _cux_native_child(wrapper_pid: int, wrapper_start: str, caller: int):
+    child, visited = None, set()
+    current = caller
+    for _ in range(MAX_ANCESTRY_DEPTH):
+        if current <= 1 or current in visited:
+            return None
+        visited.add(current)
+        try:
+            info = _process_info(current)
+        except (ReplyError, OSError):
+            return None
+        if current == wrapper_pid:
+            return child if info.start_identity == wrapper_start else None
+        if current != caller:
+            if _agent_path(info.path) == "claude":
+                if child is not None:
+                    return None  # A nested Claude cannot replace the managed child.
+                child = current
+            elif info.path.rsplit("/", 1)[-1] == "cux":
+                return None
+        current = info.parent_pid
+    return None
 
 
 def _agent_path(path: str) -> Optional[str]:

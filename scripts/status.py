@@ -269,8 +269,15 @@ def collect_status(requested=()):
                          "Install or expose Python 3.9+ on PATH" if not python_ok else ""))
     for name in sorted(requested):
         executable = shutil.which(name)
-        checks.append(_check(name + "_cli", "ok" if executable else "fail", executable or (name + " CLI is missing"),
-                             "Install " + name + " first, or omit its setup flag" if not executable else ""))
+        cux = shutil.which("cux") if name == "claude" else None
+        if cux:
+            detail = (executable + "; CUX launcher: " + cux) if executable else ("Claude via CUX: " + cux)
+        else:
+            detail = executable or (name + " CLI is missing")
+        available = bool(executable or cux)
+        fix = ("Install Claude Code or CUX first, or omit --claude" if name == "claude"
+               else "Install " + name + " first, or omit its setup flag")
+        checks.append(_check(name + "_cli", "ok" if available else "fail", detail, fix if not available else ""))
 
     rex = shutil.which("rex")
     required.add("rex")

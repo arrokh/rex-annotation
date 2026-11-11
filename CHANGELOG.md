@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.3
+
+- Treat CUX as Claude for setup, diagnostics, foreground delivery and child-restart-safe transcript binding.
+- Keep every detail-view shortcut visible in a compact, width-aware multiline header that reflows on resize without changing reply text.
+
 ## 0.1.2
 
 - Automatically bind normal `codex` and `claude` launches inside Rex through native lifecycle hooks; no wrapper or CLI replacement is required.

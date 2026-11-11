@@ -315,6 +315,8 @@ def main(argv=None):
         selected.update(("pi", "codex", "claude"))
     if args.detect:
         detected = {name for name in ("pi", "codex", "claude") if shutil.which(name)}
+        if shutil.which("cux"):
+            detected.add("claude")
         selected.update(detected)
         print("Detected agents: " + (", ".join(sorted(detected)) or "none (Rex-only setup)"))
     try:
@@ -341,7 +343,7 @@ def main(argv=None):
     if "claude" in selected:
         config_dir = Path(os.environ.get("CLAUDE_CONFIG_DIR") or str(home / ".claude")).expanduser()
         print(f"Claude lifecycle hooks merged into {config_dir / 'settings.json'}; trust and hook-disable policies were not changed.")
-    print("Use normal codex/claude commands from a Rex pane; review each CLI's own trust prompts and activation state.")
+    print("Use normal codex/claude/cux commands from a Rex pane; CUX uses the Claude integration. Review each CLI's own trust prompts and activation state.")
     return 0
 
 

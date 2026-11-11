@@ -10,6 +10,25 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 class FirstRunTests(unittest.TestCase):
+    def test_detect_cux_only_installs_claude_hooks_without_launching_cux(self):
+        with tempfile.TemporaryDirectory() as directory:
+            home = Path(directory)
+            commands = home / 'commands'
+            commands.mkdir()
+            (commands / 'python3').symlink_to(sys.executable)
+            cux = commands / 'cux'
+            cux.write_text('#!' + sys.executable + '\nraise RuntimeError("CUX must not be launched by setup/status")\n')
+            cux.chmod(0o755)
+            env = {**os.environ, 'HOME': str(home), 'PATH': str(commands),
+                   'XDG_CONFIG_HOME': str(home / '.config'), 'CLAUDE_CONFIG_DIR': str(home / '.claude'),
+                   'PYTHONDONTWRITEBYTECODE': '1'}
+            result = subprocess.run([sys.executable, str(ROOT / 'bin/rex-annotation'), 'install', '--detect'],
+                                    env=env, capture_output=True, text=True, timeout=5)
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertIn('Detected agents: claude', result.stdout)
+            self.assertTrue((home / '.claude/settings.json').is_file())
+            self.assertFalse((home / '.codex/hooks.json').exists())
+
     def test_fresh_home_detect_setup_reload_and_status_without_agent_requests(self):
         with tempfile.TemporaryDirectory() as directory:
             base = Path(directory)

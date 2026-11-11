@@ -65,8 +65,9 @@ config/hooks remain intact. Unknown existing files are not overwritten.
 
 ### Native agents: normal commands
 
-After `install --detect` (or `--codex --claude`), start `codex` or `claude` normally
-in a Rex pane. No aliases, PATH shims, or special launchers are required. The
+After `install --detect` (or `--codex --claude`), start `codex`, `claude`, or `cux`
+normally in a Rex pane. CUX counts as Claude during detection and diagnostics,
+including installations where only `cux` is on PATH. No aliases, PATH shims, or special launchers are required. The
 hooks bind the exact foreground process and hook-provided conversation; outside
 Rex they do nothing. Setup never restarts an existing native agent.
 
@@ -75,7 +76,8 @@ Claude hooks live in `$CLAUDE_CONFIG_DIR/settings.json` (default
 `~/.claude/settings.json`). Only this integration's handlers are merged; other
 settings and hooks remain intact. Run setup with the same configuration-directory
 environment as the agent. Explicitly disabled hooks and organization policy are
-not overridden. Codex still requires human approval in `/hooks`.
+not overridden. CUX keeps ownership of its accounts, credentials and switching;
+setup does not run CUX account commands. Codex still requires human approval in `/hooks`.
 
 ## Rex loader
 

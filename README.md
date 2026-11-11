@@ -34,8 +34,8 @@ Press **Ctrl+S, then o** in your agent pane. Pick a reply, select a quote with
 | `m` | Edit or remove a note |
 | `q` | Close; confirm before discarding unfinished work |
 
-After setup, run **`codex` or `claude` normally inside Rex**. No wrapper is
-required. Outside Rex, the annotation hooks do nothing. Existing agent processes
+After setup, run **`codex`, `claude`, or `cux` normally inside Rex**. CUX uses the
+Claude integration; no annotation wrapper is required. Outside Rex, the annotation hooks do nothing. Existing agent processes
 are not restarted.
 
 Delivery failures keep your notes open. [Full workflow and safety notes](docs/usage.md).

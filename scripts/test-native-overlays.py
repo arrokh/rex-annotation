@@ -2,6 +2,7 @@
 """Opt-in native reply picker/insert/Send E2E using fake executables, never real agents."""
 import importlib.util
 import json
+import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -52,6 +53,54 @@ int main(int argc, char **argv) {
 '''
 
 
+CUX_SOURCE = r'''
+#include <stdio.h>
+#include <stdlib.h>
+#include <unistd.h>
+#include <termios.h>
+#include <util.h>
+#include <signal.h>
+#include <sys/select.h>
+#include <sys/wait.h>
+int main(int argc, char **argv) {
+  if (argc != 3) return 20;
+  struct termios settings;
+  if (tcgetattr(0, &settings) != 0) return 21;
+  cfmakeraw(&settings);
+  if (tcsetattr(0, TCSANOW, &settings) != 0) return 22;
+  int master;
+  pid_t child;
+restart:
+  child = forkpty(&master, NULL, NULL, NULL);
+  if (child < 0) return 23;
+  if (child == 0) { execl(argv[1], argv[1], argv[2], (char *)NULL); _exit(24); }
+  while (1) {
+    fd_set readset;
+    FD_ZERO(&readset); FD_SET(0, &readset); FD_SET(master, &readset);
+    if (select(master + 1, &readset, NULL, NULL, NULL) < 0) return 25;
+    if (FD_ISSET(0, &readset)) {
+      unsigned char data[4096]; ssize_t count = read(0, data, sizeof(data));
+      if (count <= 0) break;
+      if (count == 1 && data[0] == 0x1d) {
+        kill(child, SIGTERM); waitpid(child, NULL, 0); close(master);
+        printf("\r\nCUX CHILD STOPPED\r\n"); fflush(stdout);
+        if (read(0, data, 1) != 1 || data[0] != 'r') return 26;
+        goto restart;
+      }
+      if (write(master, data, count) != count) return 27;
+    }
+    if (FD_ISSET(master, &readset)) {
+      char data[4096]; ssize_t count = read(master, data, sizeof(data));
+      if (count <= 0) break;
+      if (write(1, data, count) != count) return 28;
+    }
+  }
+  kill(child, SIGTERM); waitpid(child, NULL, 0); close(master);
+  return 0;
+}
+'''
+
+
 def transcript(agent, path, conversation):
     older = "2026-11-10T00:00:01Z"
     latest = "2026-11-10T01:00:01Z"
@@ -84,36 +133,64 @@ def run():
         assert compiler, "A local C compiler is required for fake-agent live tests"
         subprocess.run([compiler, str(source_file), "-o", str(base / "codex")], check=True, capture_output=True, timeout=30)
         shutil.copy2(base / "codex", base / "claude")
+        cux_source = base / "cux-fixture.c"
+        cux_source.write_text(CUX_SOURCE)
+        subprocess.run([compiler, str(cux_source), "-o", str(base / "cux")], check=True, capture_output=True, timeout=30)
         state = base / "state"
         state.mkdir(mode=0o700)
         try:
-            for agent in ("codex", "claude"):
+            for launcher, agent in (("codex", "codex"), ("claude", "claude"), ("cux", "claude")):
                 for action in ("s", "S"):
-                    raw = base / (agent + action + ".bin")
+                    columns, rows = (40, 20) if action == "s" else (120, 35)
+                    raw = base / (launcher + action + ".bin")
                     conversation = "11111111-2222-4333-8444-555555555555"
-                    path = base / (agent + action + ".jsonl")
+                    path = base / (launcher + action + ".jsonl")
                     quote = transcript(agent, path, conversation)
-                    payload = base / (agent + action + "-hook.json")
+                    payload = base / (launcher + action + "-hook.json")
                     payload.write_text(json.dumps({"hook_event_name":"SessionStart", "source":"startup",
                                                   "session_id":conversation, "transcript_path":str(path)}))
                     command = ["/usr/bin/env", "-u", "REX_PID", "-u", "REX_ANNOTATION_ROOT",
                                "REX_ANNOTATION_STATE_DIR=" + str(state), "PYTHONDONTWRITEBYTECODE=1",
                                "REX_TEST_PYTHON=" + sys.executable, "REX_TEST_HOOK=" + str(ROOT / "integrations" / agent / "hooks/register.py"),
-                               "REX_TEST_PAYLOAD=" + str(payload), str(base / agent), str(raw)]
-                    created = LIVE.rex("session.create", {"label":"rex-annotation-fake-" + agent, "initial_windows":[{"layout":{"block":{
+                               "REX_TEST_PAYLOAD=" + str(payload)]
+                    command += ([str(base / "cux"), str(base / "claude"), str(raw)] if launcher == "cux"
+                                else [str(base / agent), str(raw)])
+                    created = LIVE.rex("session.create", {"label":"rex-annotation-fake-" + launcher, "initial_windows":[{"layout":{"block":{
                         "flavor":"com.superlogical.terminal.shell", "options":{"shell":"none", "login":False,
-                        "command":command, "size":{"columns":120,"rows":35}}
+                        "command":command, "size":{"columns":columns,"rows":rows}}
                     }}}]})
                     session = created["session_id"]
                     sessions.append(session)
                     block = created["initial_windows"][0]["block_ids"][0]
                     window = created["initial_windows"][0]["window_id"]
-                    print("OWNED fake", agent, action, session, block, flush=True)
+                    print("OWNED fake", launcher, action, session, block, flush=True)
                     LIVE.wait_for(session, block, lambda s: "SYNTHETIC INPUT READY" in s)
                     pid = LIVE.terminal(session, block, "process")["foreground"]["pid"]
                     records = [json.loads(record.read_text()) for record in (state / "rex-annotation/reply-bindings").glob("*.json")]
                     matching = [record for record in records if record["pid"] == pid and record["rex_session"] == session and record["rex_block"] == block]
                     assert len(matching) == 1 and matching[0]["conversation_id"] == conversation, records
+                    if launcher == "cux":
+                        old_child = matching[0]["native_child_pid"]
+                        assert old_child != pid
+                        if action == "s":
+                            LIVE.terminal(session, block, "write", {"data":"\x1d"})
+                            LIVE.wait_for(session, block, lambda screen: "CUX CHILD STOPPED" in screen)
+                            stale = subprocess.run([sys.executable, str(ROOT / "integrations/session_replies.py"), "replies",
+                                "--agent","claude","--pid",str(pid),"--session",session,"--block",block],
+                                env=dict(os.environ, REX_ANNOTATION_STATE_DIR=str(state), PYTHONDONTWRITEBYTECODE="1"),
+                                capture_output=True, text=True, timeout=5)
+                            assert stale.returncode != 0 and "native child" in stale.stderr, stale.stderr
+                            event = json.loads(payload.read_text()); event["source"] = "resume"
+                            payload.write_text(json.dumps(event))
+                            LIVE.terminal(session, block, "write", {"data":"r"})
+                            deadline = time.monotonic() + 5
+                            while time.monotonic() < deadline:
+                                records = [json.loads(record.read_text()) for record in (state / "rex-annotation/reply-bindings").glob("*.json")]
+                                matching = [record for record in records if record["pid"] == pid]
+                                if matching and matching[0].get("native_child_pid") != old_child: break
+                                time.sleep(0.05)
+                            assert matching and matching[0]["native_child_pid"] != old_child, records
+                            print("PASS CUX child exit fails closed; resumed child rebinds same wrapper and conversation", flush=True)
                     target = {"session_id":session,"block_id":block,"window_id":window}
                     layer = LIVE.rex("session.new_layer", {"session_id":session,"window_id":window,"focus":True,"bounds":[0,0.05,1,0.9],
                         "layout":{"block":{"flavor":"com.superlogical.terminal.shell","options":{"shell":"none","login":False,
@@ -123,14 +200,23 @@ def run():
                         "exit":{"on_completion":True,"quick_exit_threshold_ms":0}}}}})
                     overlay = layer["block_ids"][0]
                     LIVE.rex("session.disown_block", {"session_id":session,"block_ids":[overlay]})
+                    LIVE.terminal(session, overlay, "resize", {"columns":columns, "rows":rows})
+                    actual_size = LIVE.terminal(session, overlay, "size")
+                    assert (actual_size["columns"], actual_size["rows"]) == (columns, rows), actual_size
                     heading = "Codex REPLIES" if agent == "codex" else "Claude Code REPLIES"
                     screen = LIVE.wait_for(session, overlay, lambda s: heading in s and "LATEST native reply" in s)
                     assert screen.count(heading) == 1 and "HIDDEN THOUGHT" not in screen and "USER PRIVATE" not in screen, screen
                     assert "private-id" not in screen and "2026-11-10T" not in screen, screen
                     LIVE.terminal(session, overlay, "write", {"data":"\r"})
-                    LIVE.wait_for(session, overlay, lambda s: "REPLY" in s and quote in s and "OLDER reply" not in s)
+                    detail = LIVE.wait_for(session, overlay, lambda s: "REPLY" in s and quote in s and "OLDER reply" not in s)
+                    for shortcut in ("v/V select", "Enter note", "m edit", "p preview", "y copy", "s insert", "S send now", "q close"):
+                        assert shortcut in detail, (columns, rows, shortcut, detail)
+                    if os.environ.get("REX_ANNOTATION_EVIDENCE_DIR"):
+                        evidence = Path(os.environ["REX_ANNOTATION_EVIDENCE_DIR"])
+                        evidence.mkdir(parents=True, exist_ok=True, mode=0o700)
+                        (evidence / (launcher + "-" + str(columns) + "x" + str(rows) + ".txt")).write_text(detail)
                     LIVE.terminal(session, overlay, "write", {"data":"ggV\rsynthetic note\x13"})
-                    LIVE.wait_for(session, overlay, lambda s: "synthetic note" in s)
+                    LIVE.wait_for(session, overlay, lambda s: "1 notes" in s)
                     LIVE.terminal(session, overlay, "write", {"data":action})
                     if action == "s":
                         LIVE.wait_for(session, overlay, lambda s: "Insert into the ORIGINAL pane?" in s)
@@ -145,7 +231,7 @@ def run():
                     view = LIVE.rex("session.view", {"session_id":session})
                     focused = next(w for w in view["windows"] if w["window_id"] == window)["focused_block_id"]
                     assert focused == block, focused
-                    print("PASS fake", agent, action, "automatic hook binding without wrapper, exact reply, Enter note, exact payload, auto-close and source focus", flush=True)
+                    print("PASS fake", launcher, action, "automatic hook binding without annotation launcher, exact reply, Enter note, exact payload, auto-close and source focus", flush=True)
         finally:
             failures = []
             for session in sessions:

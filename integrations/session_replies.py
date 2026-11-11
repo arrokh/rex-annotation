@@ -501,6 +501,7 @@ def register_binding(
     conversation_id: str,
     transcript_path: str,
     allow_pending: bool = False,
+    native_child_pid: Optional[int] = None,
 ) -> Dict[str, Any]:
     if agent not in ("codex", "claude"):
         raise ReplyError("agent must be codex or claude")
@@ -527,6 +528,11 @@ def register_binding(
         raise ReplyError("transcript is not owned by this user")
 
     start_identity = _process_start_identity(pid)
+    child_start_identity = None
+    if native_child_pid is not None:
+        if isinstance(native_child_pid, bool) or not isinstance(native_child_pid, int) or native_child_pid <= 0:
+            raise ReplyError("native child PID must be a positive integer")
+        child_start_identity = _process_start_identity(native_child_pid)
     directory = _state_directory()
     path = _binding_path(directory, pid, start_identity)
     record = {
@@ -541,8 +547,26 @@ def register_binding(
         "pending": pending,
         "registered_at": _datetime.datetime.now(_datetime.timezone.utc).isoformat(),
     }
+    if native_child_pid is not None:
+        record["native_child_pid"] = native_child_pid
+        record["native_child_start"] = child_start_identity
     _atomic_write(path, record)
     return record
+
+
+def _validate_native_child(record: Dict[str, Any]) -> None:
+    if "native_child_pid" not in record and "native_child_start" not in record:
+        return
+    child_pid = record.get("native_child_pid")
+    child_start = record.get("native_child_start")
+    if isinstance(child_pid, bool) or not isinstance(child_pid, int) or child_pid <= 0 or not isinstance(child_start, str) or not child_start:
+        raise ReplyError("native child binding metadata is malformed")
+    try:
+        current_child_start = _process_start_identity(child_pid)
+    except ReplyError as error:
+        raise ReplyError("native child process changed or exited: {}".format(error))
+    if current_child_start != child_start:
+        raise ReplyError("native child process changed or exited")
 
 
 def _current_binding(pid: int, agent: str, rex_session: str, rex_block: str) -> Tuple[Path, Dict[str, Any]]:
@@ -559,12 +583,14 @@ def _current_binding(pid: int, agent: str, rex_session: str, rex_block: str) -> 
     for key, value in expected.items():
         if record.get(key) != value:
             raise ReplyError("active reply binding does not match {}".format(key))
+    _validate_native_child(record)
     _require_token(record.get("conversation_id"), "bound conversation id")
     _require_token(record.get("transcript_path"), "bound transcript path", 4096)
     return path, record
 
 
 def _ensure_binding_unchanged(path: Path, pid: int, record: Dict[str, Any]) -> None:
+    _validate_native_child(record)
     start_identity = _process_start_identity(pid)
     if start_identity != record.get("process_start"):
         raise ReplyError("foreground process changed during validation")
@@ -596,6 +622,7 @@ def unregister_binding(
     rex_session: str,
     rex_block: str,
     conversation_id: str,
+    native_child_pid: Optional[int] = None,
 ) -> bool:
     start_identity = _process_start_identity(pid)
     path = _binding_path(_state_directory(), pid, start_identity)
@@ -616,6 +643,13 @@ def unregister_binding(
     )
     if actual != expected:
         return False
+    if native_child_pid is not None:
+        try:
+            _validate_native_child(record)
+        except ReplyError:
+            return False
+        if record.get("native_child_pid") != native_child_pid:
+            return False
     try:
         path.unlink()
     except FileNotFoundError:
@@ -628,7 +662,9 @@ def invalidate_binding(agent: str, pid: int, rex_session: str, rex_block: str) -
     try:
         _, record = _current_binding(pid, agent, rex_session, rex_block)
     except ReplyError as error:
-        if str(error).startswith("no active reply binding"):
+        # A dead CUX child is already unusable; the next registration replaces
+        # its owned record. Never require the exited child to validate a resume.
+        if str(error).startswith(("no active reply binding", "native child process changed or exited")):
             return False
         raise
     return unregister_binding(agent, pid, rex_session, rex_block, record["conversation_id"])
