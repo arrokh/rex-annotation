@@ -10,6 +10,7 @@ sys.path.insert(0, str(INTEGRATIONS))
 sys.dont_write_bytecode = True
 
 import session_replies  # noqa: E402
+from native_scope import rex_scope  # noqa: E402
 
 
 def main():
@@ -26,12 +27,10 @@ def main():
             thread_id = str(uuid.UUID(thread_id))
         except ValueError:
             raise session_replies.ReplyError("CODEX_THREAD_ID must be a Codex UUID")
-        rex_session = session_replies._env_token("REX_SESSION")
-        rex_block = session_replies._env_token("REX_BLOCK")
-        try:
-            pid = int(session_replies._env_token("REX_PID"))
-        except ValueError:
-            raise session_replies.ReplyError("REX_PID must be a positive integer")
+        scope = rex_scope("codex")
+        if scope is None:
+            raise session_replies.ReplyError("Run this skill in the foreground Codex session inside Rex")
+        rex_session, rex_block, pid = scope
 
         transcript = None
         # Reuse the native SessionStart path only when it is the same exact thread

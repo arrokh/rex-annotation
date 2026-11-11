@@ -52,7 +52,7 @@ your shell does not already include it.
 | `--detect` | Configure integrations for agent CLIs already on PATH |
 | `--pi` | Register the root Pi package using `pi install` |
 | `--codex` | Link its skill and merge owned lifecycle hooks |
-| `--claude` | Verify/use the bundled local plugin; no global Claude settings |
+| `--claude` | Merge owned lifecycle hooks into Claude user settings |
 | `--all` | Select all three integrations; selected dependencies must exist |
 | `--reload-rex` | Validate Rex config, then reload Rex only |
 
@@ -62,6 +62,20 @@ Run `rex config check && rex config reload` deliberately when ready.
 Setup never installs an agent CLI, approves hooks, reloads Pi, changes provider
 authentication, or sends a model request. Repeating setup is safe; unrelated
 config/hooks remain intact. Unknown existing files are not overwritten.
+
+### Native agents: normal commands
+
+After `install --detect` (or `--codex --claude`), start `codex` or `claude` normally
+in a Rex pane. No aliases, PATH shims, or special launchers are required. The
+hooks bind the exact foreground process and hook-provided conversation; outside
+Rex they do nothing. Setup never restarts an existing native agent.
+
+Codex hooks live in `$CODEX_HOME/hooks.json` (default `~/.codex/hooks.json`).
+Claude hooks live in `$CLAUDE_CONFIG_DIR/settings.json` (default
+`~/.claude/settings.json`). Only this integration's handlers are merged; other
+settings and hooks remain intact. Run setup with the same configuration-directory
+environment as the agent. Explicitly disabled hooks and organization policy are
+not overridden. Codex still requires human approval in `/hooks`.
 
 ## Rex loader
 
@@ -106,7 +120,9 @@ A registered Pi package with its extension disabled is not reported healthy.
 - **Pi bridge not loaded:** an existing process retains its loaded extension.
   Only reload for bridge changes after checking session-auth effects. Do not
   reload a working session just to clear an informational status check.
-- **Native reply history unavailable:** use `rex-annotation codex` or
-  `rex-annotation claude` in the owning Rex pane; see the [integration guide](../integrations/README.md).
+- **Native reply history unavailable:** run `rex-annotation install --codex --claude`,
+  review Codex `/hooks`, then start a new normal `codex` or `claude` process inside
+  Rex. Match any `CODEX_HOME`/`CLAUDE_CONFIG_DIR` override used at setup; see the
+  [integration guide](../integrations/README.md).
 - **Delivery timeout:** inspect the original draft before retrying. The operation
   may already have happened; the plugin never retries it automatically.

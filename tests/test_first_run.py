@@ -32,7 +32,8 @@ class FirstRunTests(unittest.TestCase):
             for executable in commands.iterdir():
                 if not executable.is_symlink():executable.chmod(0o755)
             environment={**os.environ,"HOME":str(home),"XDG_CONFIG_HOME":str(home/".config"),"CODEX_HOME":str(home/".codex"),
-                         "PI_CODING_AGENT_DIR":str(home/".pi/agent"),"PATH":str(commands),"TEST_CALLS":str(calls),
+                         "CLAUDE_CONFIG_DIR":str(home/".claude"),"PI_CODING_AGENT_DIR":str(home/".pi/agent"),
+                         "PATH":str(commands),"TEST_CALLS":str(calls),
                          "PYTHONDONTWRITEBYTECODE":"1"}
             result=subprocess.run([sys.executable,str(ROOT/"bin/rex-annotation"),"install","--detect","--reload-rex"],
                                   env=environment,capture_output=True,text=True,timeout=10)
@@ -42,6 +43,15 @@ class FirstRunTests(unittest.TestCase):
             self.assertIn('require("rex-annotation")',(home/".config/rex/init.lua").read_text())
             installed=json.loads((home/".pi/agent/settings.json").read_text())
             self.assertEqual(installed["packages"],[str(ROOT)])
+            claude_settings=json.loads((home/".claude/settings.json").read_text())
+            expected_claude_events=set(json.loads((ROOT/"hooks/hooks.json").read_text())["hooks"])
+            self.assertEqual(set(claude_settings["hooks"]),expected_claude_events)
+            claude_handlers=[handler for groups in claude_settings["hooks"].values() for group in groups
+                             for handler in group.get("hooks", [])]
+            self.assertTrue(claude_handlers)
+            self.assertTrue(all(handler["command"] == "python3 " + str(ROOT/"integrations/claude/hooks/register.py")
+                                for handler in claude_handlers))
+            self.assertNotIn("CLAUDE_PLUGIN_ROOT", json.dumps(claude_settings))
             recorded=[json.loads(line) for line in calls.read_text().splitlines()]
             self.assertEqual(recorded,[["pi","install",str(ROOT)],["rex","config","check"],["rex","config","reload"]])
             environment["PATH"]=str(home/".local/bin")+os.pathsep+str(commands)
@@ -52,6 +62,8 @@ class FirstRunTests(unittest.TestCase):
             self.assertEqual(report["overall"],"attention")
             self.assertFalse([check for check in report["checks"] if check["status"]=="fail"])
             self.assertEqual(next(c["status"] for c in report["checks"] if c["name"]=="codex_trust"),"manual")
+            self.assertEqual(next(c["status"] for c in report["checks"] if c["name"]=="claude_hooks"),"ok")
+            self.assertEqual(next(c["status"] for c in report["checks"] if c["name"]=="claude_runtime"),"unknown")
 
 
 if __name__=="__main__":

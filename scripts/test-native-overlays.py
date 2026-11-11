@@ -2,7 +2,6 @@
 """Opt-in native reply picker/insert/Send E2E using fake executables, never real agents."""
 import importlib.util
 import json
-import os
 from pathlib import Path
 import shutil
 import subprocess
@@ -21,6 +20,8 @@ C_SOURCE = r'''
 #include <termios.h>
 #include <unistd.h>
 #include <fcntl.h>
+#include <stdlib.h>
+#include <sys/wait.h>
 int main(int argc, char **argv) {
   struct termios settings;
   if (argc != 2 || tcgetattr(0, &settings) != 0) return 2;
@@ -28,6 +29,21 @@ int main(int argc, char **argv) {
   if (tcsetattr(0, TCSANOW, &settings) != 0) return 3;
   int file = open(argv[1], O_CREAT|O_TRUNC|O_WRONLY, 0600);
   if (file < 0) return 4;
+  const char *python = getenv("REX_TEST_PYTHON");
+  const char *hook = getenv("REX_TEST_HOOK");
+  const char *payload = getenv("REX_TEST_PAYLOAD");
+  if (!python || !hook || !payload || getenv("REX_PID") || getenv("REX_ANNOTATION_ROOT")) return 6;
+  pid_t child = fork();
+  if (child < 0) return 7;
+  if (child == 0) {
+    int input = open(payload, O_RDONLY);
+    if (input < 0 || dup2(input, STDIN_FILENO) < 0) _exit(8);
+    close(input);
+    execl(python, python, hook, (char *)NULL);
+    _exit(9);
+  }
+  int status;
+  if (waitpid(child, &status, 0) != child || !WIFEXITED(status) || WEXITSTATUS(status) != 0) return 10;
   printf("\033[?2004hSYNTHETIC INPUT READY\r\n"); fflush(stdout);
   unsigned char value;
   while (read(0, &value, 1) == 1) { if (write(file, &value, 1) != 1) return 5; }
@@ -70,14 +86,23 @@ def run():
         shutil.copy2(base / "codex", base / "claude")
         state = base / "state"
         state.mkdir(mode=0o700)
-        environment = dict(os.environ, REX_ANNOTATION_STATE_DIR=str(state), PYTHONDONTWRITEBYTECODE="1")
         try:
             for agent in ("codex", "claude"):
                 for action in ("s", "S"):
                     raw = base / (agent + action + ".bin")
+                    conversation = "11111111-2222-4333-8444-555555555555"
+                    path = base / (agent + action + ".jsonl")
+                    quote = transcript(agent, path, conversation)
+                    payload = base / (agent + action + "-hook.json")
+                    payload.write_text(json.dumps({"hook_event_name":"SessionStart", "source":"startup",
+                                                  "session_id":conversation, "transcript_path":str(path)}))
+                    command = ["/usr/bin/env", "-u", "REX_PID", "-u", "REX_ANNOTATION_ROOT",
+                               "REX_ANNOTATION_STATE_DIR=" + str(state), "PYTHONDONTWRITEBYTECODE=1",
+                               "REX_TEST_PYTHON=" + sys.executable, "REX_TEST_HOOK=" + str(ROOT / "integrations" / agent / "hooks/register.py"),
+                               "REX_TEST_PAYLOAD=" + str(payload), str(base / agent), str(raw)]
                     created = LIVE.rex("session.create", {"label":"rex-annotation-fake-" + agent, "initial_windows":[{"layout":{"block":{
                         "flavor":"com.superlogical.terminal.shell", "options":{"shell":"none", "login":False,
-                        "command":[str(base / agent), str(raw)], "size":{"columns":120,"rows":35}}
+                        "command":command, "size":{"columns":120,"rows":35}}
                     }}}]})
                     session = created["session_id"]
                     sessions.append(session)
@@ -86,13 +111,9 @@ def run():
                     print("OWNED fake", agent, action, session, block, flush=True)
                     LIVE.wait_for(session, block, lambda s: "SYNTHETIC INPUT READY" in s)
                     pid = LIVE.terminal(session, block, "process")["foreground"]["pid"]
-                    conversation = "11111111-2222-4333-8444-555555555555"
-                    path = base / (agent + action + ".jsonl")
-                    quote = transcript(agent, path, conversation)
-                    args = ["--agent",agent,"--pid",str(pid),"--session",session,"--block",block,"--conversation",conversation]
-                    registered = subprocess.run([sys.executable,str(ROOT / "integrations/session_replies.py"),"register",*args,"--transcript",str(path)],
-                                                env=environment,capture_output=True,text=True,timeout=8)
-                    assert registered.returncode == 0, registered.stderr
+                    records = [json.loads(record.read_text()) for record in (state / "rex-annotation/reply-bindings").glob("*.json")]
+                    matching = [record for record in records if record["pid"] == pid and record["rex_session"] == session and record["rex_block"] == block]
+                    assert len(matching) == 1 and matching[0]["conversation_id"] == conversation, records
                     target = {"session_id":session,"block_id":block,"window_id":window}
                     layer = LIVE.rex("session.new_layer", {"session_id":session,"window_id":window,"focus":True,"bounds":[0,0.05,1,0.9],
                         "layout":{"block":{"flavor":"com.superlogical.terminal.shell","options":{"shell":"none","login":False,
@@ -124,7 +145,7 @@ def run():
                     view = LIVE.rex("session.view", {"session_id":session})
                     focused = next(w for w in view["windows"] if w["window_id"] == window)["focused_block_id"]
                     assert focused == block, focused
-                    print("PASS fake", agent, action, "exact reply, Enter note, exact payload, auto-close and source focus", flush=True)
+                    print("PASS fake", agent, action, "automatic hook binding without wrapper, exact reply, Enter note, exact payload, auto-close and source focus", flush=True)
         finally:
             failures = []
             for session in sessions:

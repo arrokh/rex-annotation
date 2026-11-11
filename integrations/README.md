@@ -12,7 +12,7 @@ From this checkout:
 
 ```sh
 python3 scripts/install.py --codex
-bin/rex-annotation codex
+codex
 ```
 
 The installer links `~/.agents/skills/rex-annotation` and merges the bundled
@@ -35,31 +35,46 @@ Use the native hooks for automatic current-session tracking.
 
 ### Claude Code
 
-In the source Rex pane:
+Install once, then use the normal command in a Rex pane:
 
 ```sh
-bin/rex-annotation claude
+python3 scripts/install.py --claude
+claude
 ```
 
-The launcher loads **the whole repository root** as a local Claude plugin;
-`integrations/claude` alone is not a standalone plugin. The root manifest and
-hooks keep the shared Python adapter inside the plugin when the project moves
-or is packaged. No global Claude configuration or auth is changed.
+The installer merges owned lifecycle handlers into
+`${CLAUDE_CONFIG_DIR:-~/.claude}/settings.json`. Other hooks, settings,
+authentication, and permission policy remain unchanged. Run setup under the same
+configuration-directory override as Claude. A user or organization that disables
+hooks keeps that policy; setup does not turn it off.
+
+The root plugin remains available for optional explicit launchers. If loading it
+manually, use **the whole repository root**; `integrations/claude` alone is not a
+standalone plugin.
 
 Claude's SessionStart/UserPromptSubmit hooks register its exact
 `session_id`/`transcript_path`; Stop refreshes metadata and SessionEnd removes
 the matching binding. Subagent events are ignored.
 
-### Launcher environment
+### Automatic Rex binding
 
-`bin/rex-annotation` uses `exec`, preserving the native CLI's PID. It sets
-`REX_ANNOTATION_ROOT` to the checkout and `REX_PID` to that PID. Rex supplies
-`REX_SESSION` and `REX_BLOCK`. No provider, model, key, authentication, or
-approval settings are changed. Normal agents outside this opt-in launcher have
-no registration and the global hooks are no-ops for them.
+Ordinary `codex` and `claude` commands inherit `REX_SESSION` and `REX_BLOCK` from
+Rex. Hooks query that exact pane's foreground process and verify it belongs to
+the hook's ancestor chain before registering the supplied conversation and
+transcript. They never choose a transcript by modification time, bind whichever
+pane has focus, or shadow the native CLI. Hooks outside Rex are no-ops.
+Background processes and subagent events cannot replace a foreground binding.
+Codex shared-daemon or remote-server sessions whose hooks run outside that local
+process ancestry fail closed. Use `codex --no-daemon` for those sessions; setup
+does not change your daemon preferences or attach to an unrelated daemon.
+
+Optional `rex-annotation codex` / `rex-annotation claude` launchers remain
+supported. They use `exec` and provide an explicit `REX_PID`/`REX_ANNOTATION_ROOT`;
+normal commands no longer require those variables. No provider, model, key,
+authentication, or approval settings are changed.
 
 Existing processes are not restarted, reloaded, or registered by installation.
-Start a new process deliberately, or use an explicitly prepared binding.
+Start a new process deliberately after setup.
 
 ## Internal CLI contract
 
@@ -126,13 +141,16 @@ primary docs, and native rollout schemas:
 
 `npm test` runs synthetic adapter/hook/skill/lifecycle tests. Optional
 `python3 scripts/test-native-overlays.py` compiles two tiny fake executables and
-runs Codex/Claude picker → Enter comment → s/S flows in disposable Rex sessions.
+runs Codex/Claude automatic hook binding → picker → Enter comment → s/S flows in
+disposable Rex sessions without `REX_PID`, `REX_ANNOTATION_ROOT`, or wrappers.
 It verifies exact UTF-8 paste, no Return for s, exactly one Return for S,
 auto-close, source focus, and owned-session cleanup. It never invokes a real
 coding agent or sends a model request.
 
 `python3 scripts/test-native-startup.py --agent claude` checks real Claude
-SessionStart registration in a disposable network-denied home. New sessions
+SessionStart registration from the ordinary `claude` command after installing
+user hooks in a disposable network-denied home. `--launcher` checks the optional
+explicit launcher instead. New sessions
 can register a pending transcript path without creating that file. The smoke
 seeds only its owned test transcript when needed; no model prompt is submitted.
 Read operations return no replies until persistence; delivery still requires an

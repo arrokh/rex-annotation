@@ -122,6 +122,76 @@ def _is_managed_codex_handler(handler):
     return len(parts) == 2 and Path(parts[0]).name.startswith("python3") and parts[1].replace("\\", "/").endswith("/integrations/codex/hooks/register.py")
 
 
+def _is_managed_claude_handler(handler):
+    command = handler.get("command") if isinstance(handler, dict) and handler.get("type") == "command" else None
+    if not isinstance(command, str):
+        return False
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return False
+    return (len(parts) == 2 and re.fullmatch(r"python3(?:\.\d+)?", Path(parts[0]).name)
+            and parts[1].replace("\\", "/").endswith("/integrations/claude/hooks/register.py"))
+
+
+def plan_claude(home):
+    config_dir = Path(os.environ.get("CLAUDE_CONFIG_DIR") or str(home / ".claude")).expanduser()
+    settings_file = config_dir / "settings.json"
+    try:
+        config = json.loads(settings_file.read_text()) if settings_file.exists() else {}
+    except (OSError, UnicodeError, json.JSONDecodeError) as error:
+        raise ValueError(f"Invalid Claude settings file {settings_file}: {error}; no files changed")
+    if not isinstance(config, dict):
+        raise ValueError(f"Invalid Claude settings object in {settings_file}; no files changed")
+    if "disableAllHooks" in config and not isinstance(config["disableAllHooks"], bool):
+        raise ValueError(f"Invalid disableAllHooks setting in {settings_file}; no files changed")
+    hooks = config.get("hooks", {})
+    if not isinstance(hooks, dict):
+        raise ValueError(f"Invalid hooks object in {settings_file}; no files changed")
+    for event, groups in hooks.items():
+        if not isinstance(event, str) or not isinstance(groups, list):
+            raise ValueError(f"Invalid hooks list for {event!r} in {settings_file}; no files changed")
+        for group in groups:
+            if not isinstance(group, dict) or not isinstance(group.get("hooks", []), list):
+                raise ValueError(f"Invalid hook group for {event} in {settings_file}; no files changed")
+            if any(not isinstance(handler, dict) for handler in group.get("hooks", [])):
+                raise ValueError(f"Invalid hook handler for {event} in {settings_file}; no files changed")
+
+    try:
+        bundled = json.loads((ROOT / "hooks/hooks.json").read_text())["hooks"]
+    except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError) as error:
+        raise ValueError(f"Invalid bundled Claude hook template: {error}")
+    if not isinstance(bundled, dict):
+        raise ValueError("Invalid bundled Claude hook template: hooks must be an object")
+
+    command = "python3 " + shlex.quote(str(ROOT / "integrations/claude/hooks/register.py"))
+    hooks = config.setdefault("hooks", {})
+    for event, groups in list(hooks.items()):
+        kept = []
+        for original in groups:
+            handlers = original.get("hooks", [])
+            remaining = [handler for handler in handlers if not _is_managed_claude_handler(handler)]
+            if len(remaining) != len(handlers):
+                if not remaining:
+                    continue
+                original = dict(original, hooks=remaining)
+            kept.append(original)
+        hooks[event] = kept
+    for event, groups in bundled.items():
+        if not isinstance(event, str) or not isinstance(groups, list):
+            raise ValueError("Invalid bundled Claude hook template: malformed event groups")
+        existing = hooks.setdefault(event, [])
+        for original in groups:
+            group = json.loads(json.dumps(original))
+            for handler in group["hooks"]:
+                handler["command"] = command
+            existing.append(group)
+    content = json.dumps(config, indent=2) + "\n"
+    if settings_file.exists() and settings_file.read_text() == content:
+        return []
+    return [("file", settings_file, content)]
+
+
 def plan_codex(home):
     skills = list((ROOT / "integrations/codex").glob("**/SKILL.md"))
     if len(skills) != 1:
@@ -234,7 +304,7 @@ def main(argv=None):
     parser.add_argument("--rex", action="store_true", help="install the Rex loader (default)")
     parser.add_argument("--pi", action="store_true", help="register this root package with Pi")
     parser.add_argument("--codex", action="store_true", help="link the Codex skill and merge its native hooks")
-    parser.add_argument("--claude", action="store_true", help="prepare the local Claude root plugin; no global settings are changed")
+    parser.add_argument("--claude", action="store_true", help="merge automatic lifecycle hooks into Claude settings")
     parser.add_argument("--all", action="store_true", help="opt in to Pi, Codex, and Claude along with Rex")
     parser.add_argument("--detect", action="store_true", help="configure integrations only for agent CLIs already on PATH")
     parser.add_argument("--reload-rex", action="store_true", help="check and reload Rex config after setup; never reload an agent")
@@ -251,6 +321,8 @@ def main(argv=None):
         plan = plan_rex(home)
         if "codex" in selected:
             plan += plan_codex(home)
+        if "claude" in selected:
+            plan += plan_claude(home)
         plan += plan_cli(home)
         # Validate and prepare the local changes before invoking a selected agent CLI.
         if "pi" in selected:
@@ -267,9 +339,9 @@ def main(argv=None):
     if "pi" in selected:
         print("Pi registration requested for this checkout; an already-running Pi process is unchanged.")
     if "claude" in selected:
-        print(f"Start Claude in a Rex pane with {ROOT / 'bin/rex-annotation'} claude; no global Claude settings were changed.")
-    else:
-        print(f"Start native agents in a Rex pane: {ROOT / 'bin/rex-annotation'} codex|claude")
+        config_dir = Path(os.environ.get("CLAUDE_CONFIG_DIR") or str(home / ".claude")).expanduser()
+        print(f"Claude lifecycle hooks merged into {config_dir / 'settings.json'}; trust and hook-disable policies were not changed.")
+    print("Use normal codex/claude commands from a Rex pane; review each CLI's own trust prompts and activation state.")
     return 0
 
 

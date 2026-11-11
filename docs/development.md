@@ -14,7 +14,7 @@ network access and use disposable agent homes; no real agent prompt is sent:
 python3 scripts/test-rex-annotate-live.py --overlay
 python3 scripts/test-rex-annotate-live.py --overlay --installed --leave-focus
 python3 scripts/test-native-overlays.py # fake Codex/Claude s/S, never real agents
-python3 scripts/test-native-startup.py --agent claude # real startup, no model requests
+python3 scripts/test-native-startup.py --agent claude # plain CLI + user hooks, no model requests
 # --agent codex stops with exit 2 at an unapproved /hooks gate
 swift scripts/test-rex-annotate-clipboard.swift # restores all clipboard data types
 ```
@@ -33,7 +33,7 @@ python3 scripts/test-rex-annotate-live.py --agents
 
 ```text
 Formula/             Published Homebrew formula, maintained in this same repository
-bin/                 Opt-in native CLI launcher, preserving Rex process binding
+bin/                 Setup/status CLI and optional explicit native launchers
 .claude-plugin/      Root Claude Code plugin manifest
 hooks/               Root Claude Code lifecycle configuration
 rex/                 Rex launcher, in-memory core, Neovim UI

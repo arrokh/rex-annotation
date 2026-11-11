@@ -34,12 +34,9 @@ Press **Ctrl+S, then o** in your agent pane. Pick a reply, select a quote with
 | `m` | Edit or remove a note |
 | `q` | Close; confirm before discarding unfinished work |
 
-For native agents, start from the source Rex pane:
-
-```sh
-rex-annotation codex
-rex-annotation claude
-```
+After setup, run **`codex` or `claude` normally inside Rex**. No wrapper is
+required. Outside Rex, the annotation hooks do nothing. Existing agent processes
+are not restarted.
 
 Delivery failures keep your notes open. [Full workflow and safety notes](docs/usage.md).
 

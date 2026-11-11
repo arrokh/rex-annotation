@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import time
+from urllib.parse import unquote, urlsplit
 
 sys.dont_write_bytecode = True
 ROOT = Path(__file__).resolve().parent.parent
@@ -18,8 +19,16 @@ LIVE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(LIVE)
 
 
-def run(agents):
+def run(agents, launcher=False):
     sessions, results = [], []
+    connection = subprocess.run([shutil.which("rex"), "--autostart=false", "whoami", "--json"],
+                                capture_output=True, text=True, check=True, timeout=5)
+    endpoint = json.loads(connection.stdout)["endpoint"]
+    address = urlsplit(endpoint)
+    assert address.scheme == "unix" and address.path, "Native startup smoke requires the local Rex Unix socket"
+    # Permit only the existing Rex IPC endpoint; all network access stays denied.
+    profile = ('(version 1) (allow default) (deny network*) '
+               '(allow network-outbound (remote unix-socket (path-literal ' + json.dumps(unquote(address.path)) + ')))')
     with tempfile.TemporaryDirectory(prefix="rex-native-startup-") as directory:
         base = Path(directory)
         try:
@@ -33,23 +42,27 @@ def run(agents):
                     raise AssertionError(agent + " CLI is missing")
                 environment = ["PATH=" + os.environ["PATH"], "HOME=" + str(home), "TERM=xterm-256color", "LANG=en_US.UTF-8",
                                "XDG_CONFIG_HOME=" + str(home / ".config"), "TMPDIR=" + str(base), "PYTHONDONTWRITEBYTECODE=1",
-                               "REX_ANNOTATION_STATE_DIR=" + str(state), "NO_COLOR=1"]
+                               "REX_ANNOTATION_STATE_DIR=" + str(state), "REX_SERVER=" + endpoint, "NO_COLOR=1"]
                 if agent == "claude":
                     (config / ".claude.json").write_text(json.dumps({"hasCompletedOnboarding":True,"theme":"dark",
                         "lastOnboardingVersion":"2.1.322", "customApiKeyResponses":{"approved":["fixture-not-a-real-key"[-20:]],"rejected":[]},
                         "projects":{str(home.resolve()):{"hasTrustDialogAccepted":True,"hasCompletedProjectOnboarding":True}}}))
                     environment += ["CLAUDE_CONFIG_DIR=" + str(config), "ANTHROPIC_API_KEY=fixture-not-a-real-key",
                                     "DISABLE_AUTOUPDATER=1", "DISABLE_NONESSENTIAL_TRAFFIC=1"]
-                    options = ["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--setting-sources", "", "--tools", ""]
+                    options = ["--strict-mcp-config", "--mcp-config", '{"mcpServers":{}}', "--setting-sources", "user", "--tools", ""]
                 else:
                     (config / "config.toml").write_text('model_provider="fixture"\nmodel="fixture"\ncli_auth_credentials_store="file"\n'
+                        '[features]\ndaemon_auto_start=false\n'
                         '[model_providers.fixture]\nname="fixture"\nbase_url="http://127.0.0.1:9/v1"\nenv_key="REX_TEST_KEY"\nwire_api="responses"\n')
-                    shutil.copyfile(ROOT / "integrations/codex/hooks/hooks.json", config / "hooks.json")
                     environment += ["CODEX_HOME=" + str(config), "REX_TEST_KEY=fixture-not-a-real-key"]
-                    options = ["--no-daemon", "--no-alt-screen", "-C", str(home)]
+                    options = ["--no-alt-screen", "-C", str(home)]
+                setup_environment = {key:value for key,value in (entry.split("=", 1) for entry in environment)}
+                installed = subprocess.run([sys.executable, str(ROOT / "bin/rex-annotation"), "install", "--" + agent],
+                                           env=setup_environment, capture_output=True, text=True, timeout=10)
+                assert installed.returncode == 0, installed.stderr
                 command = ["/bin/sh", "-c", 'exec /usr/bin/env -i "REX_SESSION=$REX_SESSION" "REX_BLOCK=$REX_BLOCK" "$@"', "rex-startup-fixture"]
-                command += environment + ["/usr/bin/sandbox-exec", "-p", "(version 1) (allow default) (deny network*)",
-                                          shutil.which("python3"), str(ROOT / "bin/rex-annotation"), agent] + options
+                native = [shutil.which("python3"), str(ROOT / "bin/rex-annotation"), agent] if launcher else [executable]
+                command += environment + ["/usr/bin/sandbox-exec", "-p", profile] + native + options
                 created = LIVE.rex("session.create", {"label":"rex-verify-" + agent, "initial_windows":[{"layout":{"block":{
                     "flavor":"com.superlogical.terminal.shell", "options":{"shell":"none","login":False,"command":command,
                     "cwd":str(home),"size":{"columns":120,"rows":35},"exit":{"on_completion":False}}}}}]})
@@ -62,6 +75,8 @@ def run(agents):
                     screen = LIVE.terminal(session,block,"format",{"format":"text","unwrap":True})["content"]
                     if "Hooks need review" in screen:
                         break  # Human trust gate: no approval or retry is attempted.
+                    if "rex-annotation " + agent.title() + " hook:" in screen:
+                        break
                     files = list((state / "rex-annotation/reply-bindings").glob("*.json"))
                     if files:
                         assert len(files) == 1
@@ -91,9 +106,11 @@ def run(agents):
                         env={**os.environ,"REX_ANNOTATION_STATE_DIR":str(state),"PYTHONDONTWRITEBYTECODE":"1"},
                         capture_output=True,text=True,timeout=6)
                     assert validated.returncode == 0, validated.stderr
-                    result = {"agent":agent,"status":"verified","pid":pid,"binding":"exact native SessionStart transcript", "synthetic_transcript_seeded":seeded}
+                    result = {"agent":agent,"status":"verified","launch":"launcher" if launcher else "plain-command",
+                              "pid":pid,"binding":"exact native SessionStart transcript", "synthetic_transcript_seeded":seeded}
                 elif "Hooks need review" in screen:
-                    result = {"agent":agent,"status":"needs-approval","next":"Review exact Rex Annotation hooks in Codex /hooks"}
+                    result = {"agent":agent,"status":"needs-approval","launch":"launcher" if launcher else "plain-command",
+                              "next":"Review exact Rex Annotation hooks in Codex /hooks"}
                 else:
                     raise AssertionError(agent + " did not register its SessionStart binding:\n" + screen[-3000:])
                 results.append(result)
@@ -113,5 +130,6 @@ def run(agents):
 if __name__=="__main__":
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--agent",choices=("claude","codex"))
+    parser.add_argument("--launcher", action="store_true", help="check the optional explicit launcher instead of the normal CLI")
     args=parser.parse_args()
-    raise SystemExit(run([args.agent] if args.agent else ["claude","codex"]))
+    raise SystemExit(run([args.agent] if args.agent else ["claude","codex"], args.launcher))
