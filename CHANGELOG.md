@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.1.5
+
+- Show complete multiline startup errors safely instead of crashing the annotation error screen.
+- Remove obsolete old-tap migration guidance and keep GitHub release titles version-only.
+
 ## 0.1.4
 
 - Give saved annotation spans and note labels a dedicated high-contrast yellow highlight, distinct from active text selection.

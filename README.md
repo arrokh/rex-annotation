@@ -19,7 +19,7 @@ Install Rex (including its CLI) and your chosen agent CLIs separately.
 Setup detects installed agents and reloads **Rex config only**—never Pi or another
 agent. Codex hook approval remains manual in `/hooks`.
 
-[Migrate an old tap](docs/homebrew.md#migrate-from-the-old-tap) or see [source setup](docs/setup.md).
+See [source setup](docs/setup.md).
 
 ## Use
 
