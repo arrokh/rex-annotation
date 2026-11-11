@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.1
+
+- Use native macOS libproc for process identity; no setuid ps execution in sandboxed hooks.
+- Bind new Codex/Claude sessions before their first transcript is persisted, without weakening delivery validation.
+- Add a real native startup smoke test and explicit Neovim/Python/Rex prerequisites.
+
 ## 0.1.0
 
 Initial public release.

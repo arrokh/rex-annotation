@@ -52,6 +52,32 @@ class LifecycleTests(unittest.TestCase):
             with self.assertRaisesRegex(replies.ReplyError, "rollback"):
                 replies._parse_transcript("codex", str(transcript), conversation)
 
+    def test_native_sessionstart_can_bind_before_transcript_exists_without_creating_it(self):
+        for agent, conversation in (("codex", "11111111-1111-4111-8111-111111111111"), ("claude", "claude-synthetic-1")):
+            with self.subTest(agent=agent), tempfile.TemporaryDirectory() as directory:
+                state=Path(directory)/"state"
+                source=Path(directory)/"not-created"/(conversation+".jsonl")
+                environment={**os.environ,"REX_ANNOTATION_STATE_DIR":str(state),"REX_SESSION":"owned-session","REX_BLOCK":"owned-block",
+                             "REX_PID":str(os.getpid()),"PYTHONDONTWRITEBYTECODE":"1"}
+                event={"hook_event_name":"SessionStart","source":"startup","session_id":conversation,"transcript_path":str(source)}
+                result=subprocess.run([sys.executable,str(ROOT/"integrations"/agent/"hooks/register.py")],env=environment,
+                                      input=json.dumps(event),capture_output=True,text=True,timeout=5)
+                self.assertEqual(result.returncode,0,result.stderr)
+                self.assertFalse(source.exists())
+                arguments=["--agent",agent,"--pid",str(os.getpid()),"--session","owned-session","--block","owned-block"]
+                listed=subprocess.run([sys.executable,str(ROOT/"integrations/session_replies.py"),"replies",*arguments],
+                                      env=environment,capture_output=True,text=True,timeout=5)
+                self.assertEqual(listed.returncode,0,listed.stderr)
+                self.assertEqual(json.loads(listed.stdout)["replies"],[])
+                validated=subprocess.run([sys.executable,str(ROOT/"integrations/session_replies.py"),"validate",*arguments,"--conversation",conversation],
+                                         env=environment,capture_output=True,text=True,timeout=5)
+                self.assertNotEqual(validated.returncode,0)  # Delivery still needs an actual matching transcript.
+                source.parent.mkdir()
+                source.write_text((ROOT/"integrations/tests/fixtures"/(agent+"_session.jsonl")).read_text())
+                validated=subprocess.run([sys.executable,str(ROOT/"integrations/session_replies.py"),"validate",*arguments,"--conversation",conversation],
+                                         env=environment,capture_output=True,text=True,timeout=5)
+                self.assertEqual(validated.returncode,0,validated.stderr)
+
     def test_blank_assistant_blocks_are_not_selectable_replies(self):
         for agent, conversation in (("codex", "11111111-1111-4111-8111-111111111111"), ("claude", "claude-synthetic-1")):
             with self.subTest(agent=agent), tempfile.TemporaryDirectory() as directory:

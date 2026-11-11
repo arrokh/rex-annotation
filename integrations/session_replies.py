@@ -8,7 +8,6 @@ import json
 import os
 import re
 import stat
-import subprocess
 import sys
 import tempfile
 import unicodedata
@@ -58,24 +57,40 @@ def _process_start_identity(pid: int) -> str:
             raise ReplyError("cannot identify foreground process: {}".format(error))
 
     if sys.platform == "darwin":
+        # Public libproc API: sys/proc_info.h PROC_PIDTBSDINFO / proc_bsdinfo.
+        # Avoid executing setuid /bin/ps, which macOS forbids inside a sandbox.
+        import ctypes
+        import errno
+
+        class ProcBsdInfo(ctypes.Structure):
+            _fields_ = [(name, ctypes.c_uint32) for name in (
+                "flags", "status", "xstatus", "pid", "ppid", "uid", "gid",
+                "ruid", "rgid", "svuid", "svgid", "reserved")]
+            _fields_ += [("comm", ctypes.c_char * 16), ("name", ctypes.c_char * 32)]
+            _fields_ += [(name, ctypes.c_uint32) for name in (
+                "nfiles", "pgid", "pjobc", "tdev", "tpgid")]
+            _fields_ += [("nice", ctypes.c_int32), ("start_sec", ctypes.c_uint64),
+                         ("start_usec", ctypes.c_uint64)]
+
         try:
-            result = subprocess.run(
-                ["ps", "-p", str(pid), "-o", "lstart=,stat="],
-                check=False,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.DEVNULL,
-                text=True,
-                timeout=2,
-                env=dict(os.environ, LC_ALL="C"),
-            )
-        except (OSError, subprocess.TimeoutExpired) as error:
+            library = ctypes.CDLL("/usr/lib/libproc.dylib", use_errno=True)
+            query = library.proc_pidinfo
+            query.argtypes = [ctypes.c_int, ctypes.c_int, ctypes.c_uint64, ctypes.c_void_p, ctypes.c_int]
+            query.restype = ctypes.c_int
+            info = ProcBsdInfo()
+            size = query(pid, 3, 0, ctypes.byref(info), ctypes.sizeof(info))
+            error = ctypes.get_errno()
+        except (OSError, AttributeError) as error:
             raise ReplyError("cannot identify foreground process: {}".format(error))
-        fields = result.stdout.strip().split()
-        if result.returncode != 0 or len(fields) < 2 or fields[-1].startswith("Z"):
+        if size == 0 and error in (errno.ESRCH, errno.ENOENT):
             raise ReplyError("foreground process is no longer running")
-        # macOS ps exposes launch time to the nearest second; the PID and this value
-        # together detect ordinary PID reuse without invoking private APIs.
-        return "darwin:{}".format(" ".join(fields[:-1]))
+        if size != ctypes.sizeof(info):
+            raise ReplyError("cannot identify foreground process via libproc: " + (os.strerror(error) if error else "unexpected result size"))
+        if info.status == 5:  # SZOMB
+            raise ReplyError("foreground process is no longer running")
+        if info.pid != pid or info.uid != os.geteuid() or not info.start_sec:
+            raise ReplyError("foreground process identity or owner changed")
+        return "darwin:{}:{}".format(info.start_sec, info.start_usec)
 
     if os.name == "nt":
         try:
@@ -485,6 +500,7 @@ def register_binding(
     rex_block: str,
     conversation_id: str,
     transcript_path: str,
+    allow_pending: bool = False,
 ) -> Dict[str, Any]:
     if agent not in ("codex", "claude"):
         raise ReplyError("agent must be codex or claude")
@@ -495,14 +511,19 @@ def register_binding(
     source = Path(transcript_path).expanduser()
     if not source.is_absolute():
         raise ReplyError("transcript path must be absolute")
+    pending = False
     try:
         source = source.resolve(strict=True)
         info = source.stat()
+    except FileNotFoundError as error:
+        if not allow_pending or source.suffix != ".jsonl":
+            raise ReplyError("transcript path is unavailable: {}".format(error))
+        source, info, pending = source.resolve(strict=False), None, True
     except OSError as error:
         raise ReplyError("transcript path is unavailable: {}".format(error))
-    if not stat.S_ISREG(info.st_mode) or source.suffix != ".jsonl":
+    if source.suffix != ".jsonl" or (info is not None and not stat.S_ISREG(info.st_mode)):
         raise ReplyError("transcript path must identify a regular .jsonl file")
-    if hasattr(os, "geteuid") and info.st_uid != os.geteuid():
+    if info is not None and hasattr(os, "geteuid") and info.st_uid != os.geteuid():
         raise ReplyError("transcript is not owned by this user")
 
     start_identity = _process_start_identity(pid)
@@ -517,6 +538,7 @@ def register_binding(
         "rex_block": rex_block,
         "conversation_id": conversation_id,
         "transcript_path": str(source),
+        "pending": pending,
         "registered_at": _datetime.datetime.now(_datetime.timezone.utc).isoformat(),
     }
     _atomic_write(path, record)
@@ -724,7 +746,10 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(json.dumps({"valid": True, "sessionId": record["conversation_id"]}, separators=(",", ":")))
             return 0
         binding_path, record = _current_binding(args.pid, args.agent, args.rex_session, args.rex_block)
-        replies = _parse_transcript(args.agent, record["transcript_path"], record["conversation_id"])
+        if record.get("pending") is True and not Path(record["transcript_path"]).exists():
+            replies = []  # New native sessions may not persist their file until the first turn.
+        else:
+            replies = _parse_transcript(args.agent, record["transcript_path"], record["conversation_id"])
         _ensure_binding_unchanged(binding_path, args.pid, record)
         print(json.dumps({"sessionId": record["conversation_id"], "replies": replies}, ensure_ascii=False, separators=(",", ":")))
         return 0

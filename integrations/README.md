@@ -131,8 +131,14 @@ It verifies exact UTF-8 paste, no Return for s, exactly one Return for S,
 auto-close, source focus, and owned-session cleanup. It never invokes a real
 coding agent or sends a model request.
 
-An additional native-startup check reached Codex's expected hook-trust screen
-without approving it. Claude reached its editable prompt, but the restrictive
-test sandbox denied the hook's `ps` process-identity query, so real Claude
-startup registration remains unverified by that check. Neither check sent a
-prompt, and both disposable Rex sessions were deleted and verified absent.
+`python3 scripts/test-native-startup.py --agent claude` checks real Claude
+SessionStart registration in a disposable network-denied home. New sessions
+can register a pending transcript path without creating that file. The smoke
+seeds only its owned test transcript when needed; no model prompt is submitted.
+Read operations return no replies until persistence; delivery still requires an
+actual matching transcript. macOS process identity uses libproc with owner/PID
+and microsecond-start checks, not setuid `ps`.
+
+The equivalent Codex startup check stops at its expected hook-trust screen and
+returns exit code 2 until a human approves the hooks. It does not fabricate or
+bypass trust. Temporary Rex sessions/homes are deleted on both outcomes.

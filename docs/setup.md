@@ -1,5 +1,21 @@
 # Setup and troubleshooting
 
+## Required tools
+
+| Tool | How it is provided |
+| --- | --- |
+| macOS and Rex, including the `rex` CLI | Install Rex separately |
+| Neovim with `vim.system` and `getregion` (0.12.x tested) | Brew installs `neovim` automatically |
+| Python 3.9+ | Brew installs `python@3.14` automatically |
+| Pi, Codex CLI, or Claude Code | Install only the agent CLIs you intend to use |
+
+Neovim is required: classic `vi` and Vim are not compatible fallbacks. The UI
+uses Neovim's Lua APIs, floating windows and text highlights. Missing Neovim is
+reported by `rex-annotation status`; setup does not silently switch editors.
+Node.js is part of the Pi runtime when using Pi; native Codex/Claude adapters
+need only the Python dependency. A C compiler is needed only for the optional
+fake-native E2E developer test, not normal plugin use.
+
 ## Homebrew
 
 ```sh

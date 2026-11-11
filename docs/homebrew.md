@@ -42,7 +42,7 @@ From a Git checkout:
 
 ```sh
 python3 scripts/brew-package.py \
-  --source-url https://github.com/arrokh/rex-annotation/releases/download/v0.1.0/rex-annotation-0.1.0.tar.gz
+  --source-url https://github.com/arrokh/rex-annotation/releases/download/v0.1.1/rex-annotation-0.1.1.tar.gz
 ```
 
 Use the actual version from `package.json`. The generator produces:

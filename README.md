@@ -13,7 +13,8 @@ rex-annotation install --detect --reload-rex
 rex-annotation status
 ```
 
-Rex and your agent CLI must already be installed. Brew supplies Python and Neovim.
+**Neovim is required; there is no vi/Vim fallback.** Brew installs Neovim and Python.
+Install Rex (including its CLI) and your chosen agent CLIs separately.
 Setup detects installed agents and reloads **Rex config only**—never Pi or another
 agent. Codex hook approval remains manual in `/hooks`.
 

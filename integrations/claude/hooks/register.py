@@ -60,7 +60,8 @@ def main():
             transcript = payload.get("transcript_path")
             if not isinstance(transcript, str) or not transcript:
                 raise ReplyError("Claude did not provide transcript_path; enable session persistence")
-            register_binding("claude", pid, rex_session, rex_block, conversation, transcript)
+            register_binding("claude", pid, rex_session, rex_block, conversation, transcript,
+                             allow_pending=event in ("SessionStart", "UserPromptSubmit"))
             return 0
         if event == "SessionEnd":
             if isinstance(conversation, str) and conversation:
