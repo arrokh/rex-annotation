@@ -37,12 +37,17 @@ the legacy tap. Do not uninstall the plugin first:
 brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation
 brew reinstall arrokh/rex-annotation/rex-annotation
 brew test arrokh/rex-annotation/rex-annotation
+brew cleanup --dry-run rex-annotation # review obsolete plugin versions first
+brew cleanup rex-annotation
 brew untap arrokh/tap
 rex-annotation status
 ```
 
-Untap only after reinstall and test succeed. The stable `opt` path and existing
-agent/Rex configuration stay unchanged; no agent reload or authentication change
+Untap only after reinstall and test succeed. Homebrew checks receipts in older
+installed versions too; the scoped cleanup removes obsolete plugin versions, not
+user configuration. Review its dry-run first. Do not force an untap that still
+reports installed packages; keep the old tap until their receipts are resolved.
+The stable `opt` path and existing agent/Rex configuration stay unchanged; no agent reload or authentication change
 is needed. The old repository is archived with a migration pointer and a frozen
 formula for historical links. All future formula updates happen here.
 
