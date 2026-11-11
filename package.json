@@ -1,0 +1,33 @@
+{
+  "name": "rex-annotation",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Keyboard-first Neovim reply annotations for Rex, Pi, Codex CLI, and Claude Code",
+  "keywords": [
+    "pi-package",
+    "rex",
+    "neovim",
+    "annotations",
+    "codex",
+    "claude-code"
+  ],
+  "pi": {
+    "extensions": [
+      "./integrations/pi/extensions/index.js"
+    ]
+  },
+  "scripts": {
+    "test": "bash scripts/test.sh",
+    "check": "bash scripts/test.sh"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arrokh/rex-annotation.git"
+  },
+  "homepage": "https://github.com/arrokh/rex-annotation"
+}

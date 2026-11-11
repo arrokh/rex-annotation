@@ -1,0 +1,65 @@
+#!/usr/bin/env python3
+"""Rex Annotation command and exact-session native agent launcher."""
+import json
+import os
+from pathlib import Path
+import shutil
+import sys
+
+_DEFAULT_ROOT = Path(__file__).resolve().parent.parent
+_CONFIGURED_ROOT = Path(os.environ.get("REX_ANNOTATION_ROOT", "")).expanduser() if os.environ.get("REX_ANNOTATION_ROOT") else None
+ROOT = (_CONFIGURED_ROOT if _CONFIGURED_ROOT and _CONFIGURED_ROOT.is_dir()
+        and (_CONFIGURED_ROOT / "rex/annotate.lua").is_file() else _DEFAULT_ROOT)
+
+
+def _usage():
+    print("Usage: rex-annotation install [--detect] [--pi] [--codex] [--claude] [--all] [--reload-rex]\n"
+          "       rex-annotation status [--json] [--pi] [--codex] [--claude]\n"
+          "       rex-annotation doctor [status options]\n"
+          "       rex-annotation --version\n"
+          "       rex-annotation codex|claude [agent options...]\n"
+          "Install configures Rex only by default; agent integrations are opt-in.")
+
+
+def main():
+    args = sys.argv[1:]
+    if not args or args[0] in ("-h", "--help"):
+        _usage()
+        return 0
+    if args[0] in ("--version", "version"):
+        try:
+            version = json.loads((ROOT / "package.json").read_text())["version"]
+        except (OSError, ValueError, KeyError, TypeError):
+            version = "unknown"
+        print(version)
+        return 0
+    if args[0] in ("install", "status", "doctor"):
+        sys.path.insert(0, str(ROOT / "scripts"))
+        if args[0] == "install":
+            import install
+            return install.main(args[1:])
+        import status
+        return status.main(args[1:])
+
+    agent, rest = args[0], args[1:]
+    if agent not in ("codex", "claude"):
+        print("Expected install, status, doctor, codex, or claude", file=sys.stderr)
+        return 2
+    if not os.environ.get("REX_SESSION") or not os.environ.get("REX_BLOCK"):
+        print("Run this launcher in the Rex pane that should own the agent", file=sys.stderr)
+        return 1
+    executable = shutil.which(agent)
+    if not executable:
+        print(agent + " is not available on PATH", file=sys.stderr)
+        return 1
+    command = [executable, *rest]
+    if agent == "claude":
+        position = command.index("--") if "--" in command else len(command)
+        command[position:position] = ["--plugin-dir", str(ROOT)]
+    environment = dict(os.environ, REX_ANNOTATION_ROOT=str(ROOT), REX_PID=str(os.getpid()),
+                       PYTHONDONTWRITEBYTECODE="1")
+    os.execvpe(executable, command, environment)
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

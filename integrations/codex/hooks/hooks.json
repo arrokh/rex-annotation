@@ -1,0 +1,52 @@
+{
+  "description": "Bind Rex to the exact Codex CLI session transcript supplied by its lifecycle hook.",
+  "hooks": {
+    "SessionStart": [
+      {
+        "matcher": "startup|resume|clear|compact|fork",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$REX_ANNOTATION_ROOT/integrations/codex/hooks/register.py\"",
+            "timeout": 3,
+            "statusMessage": "Binding Rex to this Codex session"
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$REX_ANNOTATION_ROOT/integrations/codex/hooks/register.py\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "SessionEnd": [
+      {
+        "matcher": "other",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$REX_ANNOTATION_ROOT/integrations/codex/hooks/register.py\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ],
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$REX_ANNOTATION_ROOT/integrations/codex/hooks/register.py\"",
+            "timeout": 3
+          }
+        ]
+      }
+    ]
+  }
+}

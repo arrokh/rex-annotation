@@ -1,0 +1,28 @@
+{
+  "name": "pi-rex-annotate",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Neovim Pi reply picker, annotation insertion, and explicit Send bridge for Rex",
+  "keywords": [
+    "pi-package"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions/index.js"
+    ]
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check": "node --check bridge.js && node --check extensions/index.js && npm test"
+  },
+  "peerDependencies": {
+    "@earendil-works/pi-coding-agent": "*"
+  },
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/arrokh/rex-annotation.git"
+  },
+  "homepage": "https://github.com/arrokh/rex-annotation"
+}

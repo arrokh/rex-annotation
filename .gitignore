@@ -1,0 +1,37 @@
+# Generated packages, dependency trees, and test output
+/dist/
+/build/
+node_modules/
+coverage/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.venv/
+venv/
+*.log
+
+# Local agent/session state (not the bundled plugin/integrations)
+/.pi/
+/.codex/
+/.claude/
+/sessions/
+/state/
+/tmp/
+/artifacts/
+
+# Local configuration and credentials
+.env
+.env.*
+!.env.example
+!.env.*.example
+*.pem
+*.key
+id_rsa*
+auth.json
+credentials.json
+secrets.*
+
+# macOS metadata
+.DS_Store

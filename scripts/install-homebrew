@@ -1,0 +1,63 @@
+#!/usr/bin/env python3
+"""Install this unpublished checkout through an owned local Homebrew tap."""
+import argparse
+import importlib.util
+import os
+from pathlib import Path
+import shutil
+import subprocess
+import sys
+
+sys.dont_write_bytecode = True
+ROOT = Path(__file__).resolve().parent.parent
+TAP = "local/rex-annotation"
+FORMULA = TAP + "/rex-annotation"
+
+
+def run(argv, *, capture=False):
+    return subprocess.run(argv, check=True, text=True, capture_output=capture,
+                          env={**os.environ, "HOMEBREW_NO_AUTO_UPDATE":"1"}, timeout=900 if not capture else 20)
+
+
+def main():
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--prepare-only", action="store_true", help="create archive/formula only; don't change Homebrew")
+    parser.add_argument("--reinstall", action="store_true", help="rebuild an existing local development installation")
+    parser.add_argument("--output", type=Path, default=ROOT / "dist/homebrew")
+    args = parser.parse_args()
+    spec = importlib.util.spec_from_file_location("brew_package", ROOT / "scripts/brew-package.py")
+    package = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(package)
+    try:
+        archive, formula, digest = package.build(args.output)
+        print("Built " + str(archive) + "\nSHA256 " + digest, flush=True)
+        if args.prepare_only:
+            print("Formula: " + str(formula))
+            return 0
+        brew = shutil.which("brew")
+        if not brew:
+            parser.error("Homebrew is missing; install it from https://brew.sh or use bin/rex-annotation install from this checkout")
+        repository = Path(run([brew, "--repository"], capture=True).stdout.strip())
+        if not repository.is_absolute() or not repository.is_dir():
+            parser.error("Homebrew returned an invalid repository path; no tap was changed")
+        tap = repository / "Library/Taps/local/homebrew-rex-annotation"
+        marker = tap / ".rex-annotation-local"
+        if tap.exists() and not marker.is_file():
+            parser.error("Refusing to change unowned tap " + str(tap))
+        if not tap.exists():
+            run([brew, "tap-new", "--no-git", TAP])
+            marker.write_text("Managed by the rex-annotation local Homebrew installer.\n")
+        target = tap / "Formula/rex-annotation.rb"
+        if target.exists() and not target.read_text().startswith("# Generated local-development formula."):
+            parser.error("Refusing to overwrite unowned formula " + str(target))
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(formula.read_text())
+        run([brew, "reinstall" if args.reinstall else "install", "--formula", FORMULA])
+        print("Next: rex-annotation install && rex-annotation status")
+        return 0
+    except (OSError, ValueError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
+        parser.exit(1, "Homebrew installation failed: " + str(error) + "\n")
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

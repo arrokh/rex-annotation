@@ -1,0 +1,34 @@
+name: Checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: macos-latest
+    timeout-minutes: 15
+    env:
+      HOMEBREW_NO_ANALYTICS: "1"
+      HOMEBREW_NO_AUTO_UPDATE: "1"
+      PYTHONDONTWRITEBYTECODE: "1"
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+      - name: Install test dependencies
+        run: brew install neovim python@3.14
+      - name: Unit and integration fixtures
+        run: |
+          export PATH="$(brew --prefix python@3.14)/libexec/bin:$PATH"
+          npm test
+      - name: Validate Homebrew package
+        run: |
+          python3 scripts/brew-package.py
+          ruby -c dist/homebrew/rex-annotation.rb
+          brew ruby -e 'require "formula"; load ARGV.fetch(0); puts RexAnnotation.name' "$PWD/dist/homebrew/rex-annotation.rb"
