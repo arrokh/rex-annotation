@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.6
+
+- Make plain installation detect and configure Pi, Codex, and Claude/CUX automatically, with no extra setup flags.
+- Enable and persist approval for only Rex Annotation's exact Codex hooks through Codex's native config API; verify trust without a manual `/hooks` step.
+- Activate and verify running Rex config automatically; leave existing coding-agent processes and authentication untouched.
+- Verify selected CLIs and Pi registration, and report hook-policy blockers instead of claiming setup succeeded.
+
 ## 0.1.5
 
 - Show complete multiline startup errors safely instead of crashing the annotation error screen.

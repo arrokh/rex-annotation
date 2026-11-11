@@ -16,9 +16,23 @@ SPEC.loader.exec_module(INSTALL)
 
 class InstallerTests(unittest.TestCase):
     def run_install(self, home, *args):
+        commands = home / "fixture-bin"
+        commands.mkdir(exist_ok=True)
+        rex = commands / "rex"
+        rex.write_text("#!" + sys.executable + "\nimport json,sys\n"
+                       'print(json.dumps({"actions":[{"name":"annotate_open"}]})) if "actions" in sys.argv else print("ok")\n')
+        rex.chmod(0o755)
+        codex = commands / "codex"
+        codex.write_text((ROOT / "tests/fixtures/codex-app-server.py").read_text())
+        codex.chmod(0o755)
+        claude = commands / "claude"
+        claude.write_text("#!" + sys.executable + "\nraise RuntimeError('Claude must not be launched by installation')\n")
+        claude.chmod(0o755)
         return subprocess.run([sys.executable, str(ROOT / "scripts/install.py"), *args],
                               env={**os.environ, "HOME": str(home), "XDG_CONFIG_HOME": str(home / ".config"),
                                    "CODEX_HOME": str(home / ".codex"), "CLAUDE_CONFIG_DIR": str(home / ".claude"),
+                                   "PI_CODING_AGENT_DIR": str(home / ".pi/agent"),
+                                   "PATH": str(commands) + os.pathsep + os.environ["PATH"],
                                    "PYTHONDONTWRITEBYTECODE": "1"}, capture_output=True, text=True, timeout=5)
 
     def test_rex_install_is_idempotent_and_preserves_existing_config(self):
@@ -80,6 +94,12 @@ class InstallerTests(unittest.TestCase):
             self.assertEqual(len(installed["hooks"]["UserPromptSubmit"]), 1)
             self.assertTrue((home / ".agents/skills/rex-annotation").is_symlink())
             self.assertIn("trust", result.stdout.lower())
+            state = json.loads((codex / "fixture-setup-state.json").read_text())["config"]
+            self.assertTrue(state["features"]["hooks"])
+            self.assertEqual(len(state["hooks"]["state"]), 4)
+            self.assertTrue(all(entry.get("trusted_hash") for entry in state["hooks"]["state"].values()))
+            self.assertFalse(any("session_start:0:0" in key for key in state["hooks"]["state"]))
+            self.assertNotIn("in /hooks", result.stdout)
 
     def test_claude_install_merges_hooks_idempotently_and_preserves_unrelated_settings(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -134,9 +154,14 @@ class InstallerTests(unittest.TestCase):
             config = Path(directory) / "custom-claude-config"
             home.mkdir()
             config.mkdir()
+            commands = home / "commands"
+            commands.mkdir()
+            executable = commands / "claude"
+            executable.write_text("#!" + sys.executable + "\nraise RuntimeError('do not launch Claude during setup')\n")
+            executable.chmod(0o755)
             result = subprocess.run([sys.executable, str(ROOT / "scripts/install.py"), "--claude"],
                                    env={**os.environ, "HOME": str(home), "CLAUDE_CONFIG_DIR": str(config),
-                                        "PYTHONDONTWRITEBYTECODE": "1"}, capture_output=True, text=True, timeout=5)
+                                        "PATH": str(home / "commands"), "PYTHONDONTWRITEBYTECODE": "1"}, capture_output=True, text=True, timeout=5)
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertTrue((config / "settings.json").is_file())
             self.assertFalse((home / ".claude/settings.json").exists())
@@ -165,17 +190,19 @@ class InstallerTests(unittest.TestCase):
                     self.assertFalse(init.exists())
                     self.assertFalse((home / ".local/bin/rex-annotation").exists())
 
-    def test_claude_install_preserves_disable_all_hooks_policy(self):
-        with tempfile.TemporaryDirectory() as directory:
-            home = Path(directory)
-            settings = home / ".claude/settings.json"
-            settings.parent.mkdir()
-            settings.write_text(json.dumps({"disableAllHooks": True, "other": "preserved"}))
-            result = self.run_install(home, "--claude")
-            self.assertEqual(result.returncode, 0, result.stderr)
-            installed = json.loads(settings.read_text())
-            self.assertTrue(installed["disableAllHooks"])
-            self.assertEqual(installed["other"], "preserved")
+    def test_claude_policy_blocker_is_preserved_and_cannot_report_ready(self):
+        for policy in ("disableAllHooks", "allowManagedHooksOnly"):
+            with self.subTest(policy=policy), tempfile.TemporaryDirectory() as directory:
+                home = Path(directory)
+                settings = home / ".claude/settings.json"
+                settings.parent.mkdir()
+                original = json.dumps({policy: True, "other": "preserved"})
+                settings.write_text(original)
+                result = self.run_install(home, "--claude")
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn(policy, result.stderr)
+                self.assertEqual(settings.read_text(), original)
+                self.assertFalse((home / ".config/rex/rex-annotation.lua").exists())
 
     def test_migrate_owned_legacy_loader_without_duplicate_require(self):
         with tempfile.TemporaryDirectory() as directory:
@@ -184,7 +211,7 @@ class InstallerTests(unittest.TestCase):
             config.mkdir(parents=True)
             (config/'rex_annotation.lua').write_text('-- Installed by rex-annotation; only the repository path lives here.\nreturn dofile([[/old/rex/annotate.lua]])\n')
             (config/'init.lua').write_text('require("unrelated")\nrequire("rex_annotation") -- old\n')
-            result=self.run_install(home)
+            result=self.run_install(home,'--rex')
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertEqual((config/'init.lua').read_text().count('require("rex-annotation")'),1)
             self.assertNotIn('require("rex_annotation")',(config/'init.lua').read_text())
@@ -199,7 +226,7 @@ class InstallerTests(unittest.TestCase):
             (config/'rex_annotation.lua').write_text('-- unrelated feature\n')
             original='require("unrelated")\nrequire("rex_annotation")\n'
             (config/'init.lua').write_text(original)
-            result=self.run_install(home)
+            result=self.run_install(home,'--rex')
             self.assertNotEqual(result.returncode,0)
             self.assertEqual((config/'init.lua').read_text(),original)
             self.assertFalse((config/'rex-annotation.lua').exists())
@@ -226,7 +253,7 @@ class InstallerTests(unittest.TestCase):
             commands.mkdir()
             executable=commands/'pi'
             log=base/'pi.json'
-            executable.write_text('#!'+sys.executable+'\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["PI_TEST_LOG"]).write_text(json.dumps(sys.argv[1:]))\nsys.exit(int(os.environ.get("PI_TEST_EXIT","0")))\n')
+            executable.write_text('#!'+sys.executable+'\nimport json,os,sys\nfrom pathlib import Path\nPath(os.environ["PI_TEST_LOG"]).write_text(json.dumps(sys.argv[1:]))\ncode=int(os.environ.get("PI_TEST_EXIT","0"))\nif not code:\n p=Path(os.environ["PI_CODING_AGENT_DIR"])/"settings.json";p.parent.mkdir(parents=True,exist_ok=True);p.write_text(json.dumps({"packages":[sys.argv[2]]}))\nsys.exit(code)\n')
             executable.chmod(0o755)
             old={key:os.environ.get(key) for key in ('PATH','PI_TEST_LOG','PI_TEST_EXIT')}
             try:
@@ -247,6 +274,46 @@ class InstallerTests(unittest.TestCase):
                 for key,value in old.items():
                     if value is None: os.environ.pop(key,None)
                     else: os.environ[key]=value
+
+    def test_requested_missing_cli_fails_before_configuration_changes(self):
+        for selection in ("--pi", "--codex", "--claude", "--all"):
+            with self.subTest(selection=selection), tempfile.TemporaryDirectory() as directory:
+                home = Path(directory)
+                commands = home / "commands"
+                commands.mkdir()
+                env = {**os.environ, "HOME": str(home), "PATH": str(commands),
+                       "CODEX_HOME": str(home / ".codex"), "CLAUDE_CONFIG_DIR": str(home / ".claude"),
+                       "PI_CODING_AGENT_DIR": str(home / ".pi/agent"), "XDG_CONFIG_HOME": str(home / ".config")}
+                result = subprocess.run([sys.executable, str(ROOT / "bin/rex-annotation"), "install", selection],
+                                        env=env, capture_output=True, text=True, timeout=5)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("CLI", result.stderr)
+                self.assertFalse((home / ".config").exists())
+                self.assertFalse((home / ".codex").exists())
+                self.assertFalse((home / ".claude").exists())
+
+    def test_successful_pi_command_with_invalid_registration_cannot_report_ready(self):
+        declarations = ([], [{"source": str(ROOT), "extensions": []}], [str(ROOT), str(ROOT)])
+        for packages in declarations:
+            with self.subTest(packages=packages), tempfile.TemporaryDirectory() as directory:
+                home = Path(directory)
+                commands = home / "commands"
+                commands.mkdir()
+                pi = commands / "pi"
+                pi.write_text("#!" + sys.executable + "\nraise SystemExit(0)\n")
+                pi.chmod(0o755)
+                settings = home / ".pi/agent/settings.json"
+                settings.parent.mkdir(parents=True)
+                original = json.dumps({"packages": packages})
+                settings.write_text(original)
+                env = {**os.environ, "HOME": str(home), "PATH": str(commands),
+                       "PI_CODING_AGENT_DIR": str(settings.parent), "XDG_CONFIG_HOME": str(home / ".config")}
+                result = subprocess.run([sys.executable, str(ROOT / "bin/rex-annotation"), "install", "--pi"],
+                                        env=env, capture_output=True, text=True, timeout=5)
+                self.assertNotEqual(result.returncode, 0)
+                self.assertIn("Pi registration", result.stderr)
+                self.assertEqual(settings.read_text(), original)
+                self.assertFalse((home / ".config/rex/rex-annotation.lua").exists())
 
     def test_long_lua_path_quotes_cannot_break_out(self):
         value = '/tmp/odd path]]and]=]"plugin/rex/annotate.lua'

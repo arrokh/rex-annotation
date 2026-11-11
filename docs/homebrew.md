@@ -5,7 +5,7 @@
 ```sh
 brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation &&
 brew install arrokh/rex-annotation/rex-annotation &&
-rex-annotation install --detect --reload-rex &&
+rex-annotation install &&
 rex-annotation status
 ```
 
@@ -14,6 +14,7 @@ For an existing installation using this tap:
 ```sh
 brew update &&
 brew upgrade arrokh/rex-annotation/rex-annotation &&
+rex-annotation install &&
 rex-annotation status
 ```
 
@@ -26,7 +27,8 @@ installed separately.
 
 Brew installs program files only. User configuration is created by the explicit
 setup command; there is no `post_install` modification of your home directory.
-`--reload-rex` validates and activates Rex config, never an agent process.
+Plain `install` configures every detected supported agent, including its own Codex
+hook approvals, and activates running Rex config. It never reloads an agent process.
 
 ## Upgrade-safe paths
 
@@ -45,7 +47,7 @@ From a Git checkout:
 
 ```sh
 python3 scripts/brew-package.py \
-  --source-url https://github.com/arrokh/rex-annotation/releases/download/v0.1.5/rex-annotation-0.1.5.tar.gz
+  --source-url https://github.com/arrokh/rex-annotation/releases/download/v0.1.6/rex-annotation-0.1.6.tar.gz
 ```
 
 Use the actual version from `package.json`. The generator produces:

@@ -52,7 +52,8 @@ class HomebrewDocsTests(unittest.TestCase):
     def test_upgrade_example_stops_at_failed_brew_command(self):
         text = (ROOT / "docs/homebrew.md").read_text()
         script = re.findall(r"```sh\n(.*?)```", text, re.DOTALL)[1]
-        commands = [["brew", "update"], ["brew", "upgrade", FORMULA], ["rex-annotation", "status"]]
+        commands = [["brew", "update"], ["brew", "upgrade", FORMULA],
+                    ["rex-annotation", "install"], ["rex-annotation", "status"]]
         for index, failed in enumerate(commands):
             with self.subTest(command=failed):
                 result, calls = self.run_example(script, failure=failed)

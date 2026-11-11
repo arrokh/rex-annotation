@@ -23,11 +23,10 @@ class RexAnnotation < Formula
 
   def caveats
     <<~EOS
-      Configure your user environment explicitly:
+      Automatically configure Rex and detected Pi/Codex/Claude/CUX:
         rex-annotation install
         rex-annotation status
-      Optional agents:
-        rex-annotation install --all
+      Setup trusts only its own Codex hooks and never reloads coding agents.
       No user configuration is changed by brew install itself.
     EOS
   end
@@ -45,7 +44,7 @@ class RexAnnotation < Formula
     chmod 0755, testpath/"fake-bin/rex"
     ENV.prepend_path "PATH", testpath/"fake-bin"
     ENV["XDG_CONFIG_HOME"] = (testpath/"config").to_s
-    system bin/"rex-annotation", "install", "--reload-rex"
+    system bin/"rex-annotation", "install", "--rex", "--reload-rex"
     assert_path_exists testpath/"config/rex/rex-annotation.lua"
     report = JSON.parse(shell_output("#{bin}/rex-annotation status --json"))
     assert_empty report.fetch("checks").select { |check| check.fetch("status") == "fail" }

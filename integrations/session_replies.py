@@ -792,7 +792,7 @@ def main(argv: Optional[List[str]] = None) -> int:
     except ReplyError as error:
         print("rex-annotation: {}".format(error), file=sys.stderr)
         if str(error).startswith("no active reply binding"):
-            print("Start the agent with bin/rex-annotation in its Rex pane. Codex also needs its rex-annotation skill or native hook activated.", file=sys.stderr)
+            print("Run rex-annotation install, then start a normal codex, claude, or cux session in its Rex pane. Existing agent processes are not reloaded by setup.", file=sys.stderr)
         return 1
     except (OSError, ValueError, TypeError) as error:
         print("rex-annotation: failed safely: {}".format(error), file=sys.stderr)

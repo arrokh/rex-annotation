@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Install Rex Annotation's local loader and explicitly selected agent integrations."""
+"""Install Rex Annotation and automatically configure detected agent integrations."""
 import argparse
 import json
 import os
@@ -143,8 +143,12 @@ def plan_claude(home):
         raise ValueError(f"Invalid Claude settings file {settings_file}: {error}; no files changed")
     if not isinstance(config, dict):
         raise ValueError(f"Invalid Claude settings object in {settings_file}; no files changed")
-    if "disableAllHooks" in config and not isinstance(config["disableAllHooks"], bool):
-        raise ValueError(f"Invalid disableAllHooks setting in {settings_file}; no files changed")
+    for policy in ("disableAllHooks", "allowManagedHooksOnly"):
+        if policy in config and not isinstance(config[policy], bool):
+            raise ValueError(f"Invalid {policy} setting in {settings_file}; no files changed")
+        if config.get(policy):
+            raise ValueError(f"Claude/CUX setup is blocked by {policy}=true in {settings_file}; "
+                             "this hook policy is preserved and no files changed")
     hooks = config.get("hooks", {})
     if not isinstance(hooks, dict):
         raise ValueError(f"Invalid hooks object in {settings_file}; no files changed")
@@ -282,6 +286,10 @@ def _install_pi(timeout=20):
         print(result.stderr, file=sys.stderr, end="" if result.stderr.endswith("\n") else "\n")
     if result.returncode:
         raise ValueError(f"pi install failed with exit code {result.returncode}")
+    from status import _pi_installed
+    state, detail, _ = _pi_installed(Path.home())
+    if state != "installed":
+        raise ValueError("Pi registration verification failed: " + detail)
 
 
 def _reload_rex():
@@ -290,7 +298,7 @@ def _reload_rex():
         raise ValueError("Rex CLI is missing; install Rex before requesting --reload-rex")
     for command in ("check", "reload"):
         try:
-            result = subprocess.run([executable, "config", command], capture_output=True, text=True, timeout=8)
+            result = subprocess.run([executable, "--autostart=false", "config", command], capture_output=True, text=True, timeout=8)
         except subprocess.TimeoutExpired:
             raise ValueError("Rex config " + command + " timed out; config files were saved. Inspect rex-annotation status before retrying")
         if result.returncode:
@@ -299,27 +307,62 @@ def _reload_rex():
             print(result.stdout.strip())
 
 
+def _activate_rex(required=False):
+    executable = shutil.which("rex")
+    if not executable:
+        if required:
+            raise ValueError("Rex CLI is missing; install Rex before requesting --reload-rex")
+        return False
+    command = [executable, "--autostart=false", "--timeout", "3s", "actions", "--json"]
+    try:
+        running = subprocess.run(command, capture_output=True, text=True, timeout=5)
+    except subprocess.TimeoutExpired:
+        raise ValueError("Rex activation probe timed out; configuration was saved but activation is unverified")
+    if running.returncode:
+        if required:
+            raise ValueError("Rex is not running; start Rex before requesting --reload-rex")
+        return False
+    _reload_rex()
+    try:
+        verified = subprocess.run(command, capture_output=True, text=True, timeout=5)
+    except subprocess.TimeoutExpired:
+        raise ValueError("Rex action verification timed out after config reload")
+    try:
+        actions = json.loads(verified.stdout)["actions"] if verified.returncode == 0 else []
+        active = any(action.get("name") == "annotate_open" for action in actions)
+    except (ValueError, KeyError, TypeError, AttributeError):
+        active = False
+    if not active:
+        raise ValueError("Rex config reloaded but the annotation action is unavailable; inspect Rex configuration errors")
+    return True
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--rex", action="store_true", help="install the Rex loader (default)")
+    parser.add_argument("--rex", action="store_true", help="install only the Rex loader unless agent options are also supplied")
     parser.add_argument("--pi", action="store_true", help="register this root package with Pi")
     parser.add_argument("--codex", action="store_true", help="link the Codex skill and merge its native hooks")
     parser.add_argument("--claude", action="store_true", help="merge automatic lifecycle hooks into Claude settings")
-    parser.add_argument("--all", action="store_true", help="opt in to Pi, Codex, and Claude along with Rex")
-    parser.add_argument("--detect", action="store_true", help="configure integrations only for agent CLIs already on PATH")
+    parser.add_argument("--all", action="store_true", help="configure Pi, Codex, and Claude along with Rex")
+    parser.add_argument("--detect", action="store_true", help="detect installed agent CLIs (the default without selection flags)")
     parser.add_argument("--reload-rex", action="store_true", help="check and reload Rex config after setup; never reload an agent")
     args = parser.parse_args(argv)
     home = Path.home()
     selected = {name for name in ("pi", "codex", "claude") if getattr(args, name)}
     if args.all:
         selected.update(("pi", "codex", "claude"))
-    if args.detect:
+    if args.detect or not (selected or args.all or args.rex):
         detected = {name for name in ("pi", "codex", "claude") if shutil.which(name)}
         if shutil.which("cux"):
             detected.add("claude")
         selected.update(detected)
         print("Detected agents: " + (", ".join(sorted(detected)) or "none (Rex-only setup)"))
     try:
+        for name in sorted(selected):
+            available = shutil.which(name) or (name == "claude" and shutil.which("cux"))
+            if not available:
+                label = "Claude Code or CUX" if name == "claude" else name
+                raise ValueError(f"{label} CLI is not available on PATH; install it before selecting this integration")
         plan = plan_rex(home)
         if "codex" in selected:
             plan += plan_codex(home)
@@ -330,20 +373,25 @@ def main(argv=None):
         if "pi" in selected:
             _install_pi()
         _apply(plan)
-        if args.reload_rex:
-            _reload_rex()
+        if "codex" in selected:
+            from codex_setup import configure_codex
+            print(configure_codex(ROOT, home)["detail"])
+        reloaded = _activate_rex(required=args.reload_rex)
     except (OSError, ValueError) as error:
-        parser.exit(1, str(error) + "\n")
-    print("Rex config reloaded. No agent process was reloaded." if args.reload_rex else "No runtime reloaded. Use --reload-rex to validate and activate Rex config; agents stay untouched.")
+        parser.exit(1, "Setup incomplete: " + str(error) + "\n")
+    print("Rex config reloaded. No agent process was reloaded." if reloaded else
+          "Rex is not running; saved config will load when Rex starts. No agent process was reloaded.")
     print("Next: rex-annotation status (read-only checks with specific fixes)")
     if "codex" in selected:
-        print("Review and trust the local Codex hooks yourself in /hooks; trust is never bypassed by this installer.")
+        print("Codex lifecycle hooks are enabled and this integration's exact definitions are trusted.")
     if "pi" in selected:
         print("Pi registration requested for this checkout; an already-running Pi process is unchanged.")
     if "claude" in selected:
         config_dir = Path(os.environ.get("CLAUDE_CONFIG_DIR") or str(home / ".claude")).expanduser()
         print(f"Claude lifecycle hooks merged into {config_dir / 'settings.json'}; trust and hook-disable policies were not changed.")
-    print("Use normal codex/claude/cux commands from a Rex pane; CUX uses the Claude integration. Review each CLI's own trust prompts and activation state.")
+    configured = ", ".join("Claude/CUX" if name == "claude" else name for name in sorted(selected))
+    print("Ready for new sessions: " + (configured or "Rex") + ".")
+    print("Use normal codex/claude/cux commands from a Rex pane; CUX uses the Claude integration. Existing agent processes stay untouched.")
     return 0
 
 

@@ -16,6 +16,7 @@ _DEFAULT_ROOT = Path(__file__).resolve().parent.parent
 _CONFIGURED_ROOT = Path(os.environ.get("REX_ANNOTATION_ROOT", "")).expanduser() if os.environ.get("REX_ANNOTATION_ROOT") else None
 ROOT = (_CONFIGURED_ROOT if _CONFIGURED_ROOT and _CONFIGURED_ROOT.is_dir()
         and (_CONFIGURED_ROOT / "rex/annotate.lua").is_file() else _DEFAULT_ROOT)
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 
 def _check(name, status, detail, fix=""):
@@ -208,9 +209,11 @@ def _claude_hooks_state(home):
         return "invalid", "Cannot read Claude settings or bundled hook template: {}".format(error), settings_file
     if not isinstance(settings, dict):
         return "invalid", "Claude settings must be a JSON object", settings_file
-    disabled = settings.get("disableAllHooks", False)
-    if not isinstance(disabled, bool):
-        return "invalid", "Claude disableAllHooks setting is malformed", settings_file
+    for policy in ("disableAllHooks", "allowManagedHooksOnly"):
+        if policy in settings and not isinstance(settings[policy], bool):
+            return "invalid", "Claude " + policy + " setting is malformed", settings_file
+        if settings.get(policy):
+            return "blocked", "Claude " + policy + " is true, so local annotation hooks cannot run", settings_file
     hooks = settings.get("hooks", {})
     if not isinstance(hooks, dict):
         return "invalid", "Claude settings have an invalid hooks object", settings_file
@@ -240,8 +243,6 @@ def _claude_hooks_state(home):
                         and matches_event):
                     active_events.add(event)
 
-    if disabled:
-        return "blocked", "Claude disableAllHooks is true, so configured hooks cannot run", settings_file
     if not managed_paths:
         return "absent", "Claude settings do not register this checkout's lifecycle hooks", settings_file
     if (active_events >= expected_events
@@ -358,8 +359,20 @@ def collect_status(requested=()):
     checks.append(_check("codex_paths", codex_status, codex_detail,
                          "Run rex-annotation install --codex" if codex_status in ("not-installed", "fail") else ""))
     if codex_state == "installed":
-        checks.append(_check("codex_trust", "manual", "Codex hook trust/approval is not observable and is never bypassed",
-                             "Run normal codex inside a Rex pane, then review and trust the local hooks in /hooks yourself"))
+        required.add("codex_trust")
+        try:
+            from codex_setup import inspect_codex
+            trust = inspect_codex(ROOT, home)
+            trust_status, trust_detail = trust["status"], trust["detail"]
+            if trust_status == "needs-setup":
+                trust_status = "fail"
+            if trust_status not in ("ok", "fail", "unknown", "blocked"):
+                raise ValueError("Codex returned an invalid trust status")
+        except (OSError, ValueError, KeyError, TypeError) as error:
+            trust_status, trust_detail = "fail", "Cannot verify Codex hook readiness: " + str(error)
+        checks.append(_check("codex_trust", trust_status, trust_detail,
+                             "Run rex-annotation install to configure and trust its Codex hooks"
+                             if trust_status != "ok" else ""))
 
     manifest = ROOT / ".claude-plugin/plugin.json"
     launcher = ROOT / "bin/rex-annotation"
@@ -383,7 +396,7 @@ def collect_status(requested=()):
         claude_status = "fail"
         claude_detail = "Claude lifecycle hooks were requested but are absent from {}".format(claude_settings)
     if claude_state == "blocked":
-        claude_fix = "disableAllHooks is true in {}; the installer preserves this policy. Change it yourself only if intended".format(claude_settings)
+        claude_fix = "Hook policy in {} blocks local hooks; the installer preserves this policy. Change it yourself only if intended".format(claude_settings)
     elif claude_state == "invalid":
         claude_fix = "Repair the Claude settings JSON/hooks structure, then rerun rex-annotation install --claude"
     elif claude_status in ("not-installed", "fail"):
@@ -393,8 +406,8 @@ def collect_status(requested=()):
     checks.append(_check("claude_hooks", claude_status, claude_detail, claude_fix))
     if claude_state == "installed":
         checks.append(_check("claude_runtime", "unknown",
-                             "Claude hook trust, activation, and live runtime state are not observable; run normal claude inside a Rex pane and review Claude's own trust prompts",
-                             "Use normal claude inside a Rex pane and review its trust prompts; no wrapper or trust override is required"))
+                             "Claude/CUX lifecycle hooks are registered for new sessions; existing processes and managed runtime policy are not inspected",
+                             "Use normal claude or cux inside a Rex pane; existing agent processes are not reloaded"))
 
     required_fail = any(check["status"] == "fail" or
                         (check["name"] in required and check["status"] in ("unknown", "blocked"))
