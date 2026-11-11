@@ -217,6 +217,9 @@ def run():
                         (evidence / (launcher + "-" + str(columns) + "x" + str(rows) + ".txt")).write_text(detail)
                     LIVE.terminal(session, overlay, "write", {"data":"ggV\rsynthetic note\x13"})
                     LIVE.wait_for(session, overlay, lambda s: "1 notes" in s)
+                    if os.environ.get("REX_ANNOTATION_EVIDENCE_DIR"):
+                        html = LIVE.terminal(session, overlay, "format", {"format":"html","unwrap":True})["content"]
+                        (Path(os.environ["REX_ANNOTATION_EVIDENCE_DIR"]) / (launcher + "-" + str(columns) + "-annotated.html")).write_text(html)
                     LIVE.terminal(session, overlay, "write", {"data":action})
                     if action == "s":
                         LIVE.wait_for(session, overlay, lambda s: "Insert into the ORIGINAL pane?" in s)

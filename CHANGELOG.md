@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4
+
+- Give saved annotation spans and note labels a dedicated high-contrast yellow highlight, distinct from active text selection.
+
 ## 0.1.3
 
 - Treat CUX as Claude for setup, diagnostics, foreground delivery and child-restart-safe transcript binding.
