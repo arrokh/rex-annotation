@@ -1,7 +1,9 @@
 # Changelog
 
-## Unreleased
+## 0.1.2
 
+- Automatically bind normal `codex` and `claude` launches inside Rex through native lifecycle hooks; no wrapper or CLI replacement is required.
+- Install Claude user hooks idempotently and diagnose their actual registration rather than only plugin packaging.
 - Maintain the Homebrew formula in this repository; add explicit custom-tap installation and legacy-tap migration steps.
 
 ## 0.1.1

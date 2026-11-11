@@ -179,6 +179,77 @@ def _codex_state(home):
     return "absent", "Codex skill and hooks are not installed for this checkout", skill, hook_file, False
 
 
+def _claude_settings_path(home):
+    config_dir = Path(os.environ.get("CLAUDE_CONFIG_DIR") or str(home / ".claude")).expanduser()
+    return config_dir / "settings.json"
+
+
+def _is_managed_claude_handler(handler):
+    command = handler.get("command") if isinstance(handler, dict) and handler.get("type") == "command" else None
+    if not isinstance(command, str):
+        return False
+    try:
+        parts = shlex.split(command)
+    except ValueError:
+        return False
+    return (len(parts) == 2 and re.fullmatch(r"python3(?:\.\d+)?", Path(parts[0]).name)
+            and parts[1].replace("\\", "/").endswith("/integrations/claude/hooks/register.py"))
+
+
+def _claude_hooks_state(home):
+    settings_file = _claude_settings_path(home)
+    if not settings_file.exists():
+        return "absent", "Claude settings do not register this checkout's lifecycle hooks", settings_file
+    try:
+        settings = json.loads(settings_file.read_text())
+        template = json.loads((ROOT / "hooks/hooks.json").read_text())
+        expected_events = set(template["hooks"])
+    except (OSError, UnicodeError, json.JSONDecodeError, KeyError, TypeError) as error:
+        return "invalid", "Cannot read Claude settings or bundled hook template: {}".format(error), settings_file
+    if not isinstance(settings, dict):
+        return "invalid", "Claude settings must be a JSON object", settings_file
+    disabled = settings.get("disableAllHooks", False)
+    if not isinstance(disabled, bool):
+        return "invalid", "Claude disableAllHooks setting is malformed", settings_file
+    hooks = settings.get("hooks", {})
+    if not isinstance(hooks, dict):
+        return "invalid", "Claude settings have an invalid hooks object", settings_file
+
+    managed_paths = []
+    active_events = set()
+    for event, groups in hooks.items():
+        if not isinstance(event, str) or not isinstance(groups, list):
+            return "invalid", "Claude settings have an invalid hooks list", settings_file
+        for group in groups:
+            if not isinstance(group, dict) or not isinstance(group.get("hooks", []), list):
+                return "invalid", "Claude settings have an invalid hook group", settings_file
+            for handler in group.get("hooks", []):
+                if not isinstance(handler, dict):
+                    return "invalid", "Claude settings have an invalid hook handler", settings_file
+                if not _is_managed_claude_handler(handler):
+                    continue
+                try:
+                    parts = shlex.split(handler["command"])
+                except (KeyError, ValueError):
+                    continue
+                managed_paths.append(parts[1])
+                matches_event = any(group.get("matcher") == expected.get("matcher")
+                                    for expected in template["hooks"].get(event, []))
+                if (re.fullmatch(r"python3(?:\.\d+)?", Path(parts[0]).name)
+                        and Path(parts[1]) == ROOT / "integrations/claude/hooks/register.py"
+                        and matches_event):
+                    active_events.add(event)
+
+    if disabled:
+        return "blocked", "Claude disableAllHooks is true, so configured hooks cannot run", settings_file
+    if not managed_paths:
+        return "absent", "Claude settings do not register this checkout's lifecycle hooks", settings_file
+    if (active_events >= expected_events
+            and all(Path(path) == ROOT / "integrations/claude/hooks/register.py" for path in managed_paths)):
+        return "installed", "Complete Claude lifecycle hooks point to this checkout", settings_file
+    return "partial", "Claude lifecycle hooks are incomplete or point to an old checkout", settings_file
+
+
 def collect_status(requested=()):
     home = Path.home()
     requested = set(requested)
@@ -281,29 +352,47 @@ def collect_status(requested=()):
                          "Run rex-annotation install --codex" if codex_status in ("not-installed", "fail") else ""))
     if codex_state == "installed":
         checks.append(_check("codex_trust", "manual", "Codex hook trust/approval is not observable and is never bypassed",
-                             "Review and trust the local hooks in Codex /hooks yourself"))
+                             "Run normal codex inside a Rex pane, then review and trust the local hooks in /hooks yourself"))
 
     manifest = ROOT / ".claude-plugin/plugin.json"
     launcher = ROOT / "bin/rex-annotation"
     try:
         plugin = json.loads(manifest.read_text())
-        claude_ok = plugin.get("name") == "rex-annotation" and launcher.is_file() and (ROOT / "hooks/hooks.json").is_file()
+        claude_plugin_ok = (plugin.get("name") == "rex-annotation" and launcher.is_file()
+                            and (ROOT / "hooks/hooks.json").is_file())
     except (OSError, json.JSONDecodeError, UnicodeError, AttributeError):
-        claude_ok = False
-    claude_status = "ok" if claude_ok else "fail"
-    if "claude" not in requested and not claude_ok:
-        claude_status = "not-installed"
-    if "claude" in requested:
-        required.add("claude_plugin")
-    checks.append(_check("claude_plugin", claude_status,
-                         "Root Claude plugin manifest, hooks, and launcher are available" if claude_ok else "Root Claude plugin files are incomplete",
-                         "Restore the root plugin files" if not claude_ok else ""))
-    if claude_ok:
-        checks.append(_check("claude_runtime", "unknown", "Plugin trust, activation, and live runtime state are not observable; no global settings were changed",
-                             "Use the launcher from the source Rex pane; review Claude's own trust prompts"))
+        claude_plugin_ok = False
+    checks.append(_check("claude_plugin", "ok" if claude_plugin_ok else "not-installed",
+                         "Bundled Claude plugin files are available for the optional explicit launcher; this does not indicate user activation"
+                         if claude_plugin_ok else "Bundled Claude plugin files for the optional explicit launcher are incomplete",
+                         "Restore the root plugin files if you use the explicit launcher" if not claude_plugin_ok else ""))
 
-    required_fail = any(check["status"] == "fail" or (check["name"] in required and check["status"] == "unknown") for check in checks)
-    overall = "fail" if required_fail else ("attention" if any(check["status"] in ("manual", "unknown") for check in checks) else "ok")
+    claude_state, claude_detail, claude_settings = _claude_hooks_state(home)
+    claude_status = {"installed": "ok", "absent": "not-installed", "partial": "fail",
+                     "invalid": "fail", "blocked": "blocked"}[claude_state]
+    if "claude" in requested or claude_state != "absent":
+        required.add("claude_hooks")
+    if "claude" in requested and claude_status == "not-installed":
+        claude_status = "fail"
+        claude_detail = "Claude lifecycle hooks were requested but are absent from {}".format(claude_settings)
+    if claude_state == "blocked":
+        claude_fix = "disableAllHooks is true in {}; the installer preserves this policy. Change it yourself only if intended".format(claude_settings)
+    elif claude_state == "invalid":
+        claude_fix = "Repair the Claude settings JSON/hooks structure, then rerun rex-annotation install --claude"
+    elif claude_status in ("not-installed", "fail"):
+        claude_fix = "Run rex-annotation install --claude"
+    else:
+        claude_fix = ""
+    checks.append(_check("claude_hooks", claude_status, claude_detail, claude_fix))
+    if claude_state == "installed":
+        checks.append(_check("claude_runtime", "unknown",
+                             "Claude hook trust, activation, and live runtime state are not observable; run normal claude inside a Rex pane and review Claude's own trust prompts",
+                             "Use normal claude inside a Rex pane and review its trust prompts; no wrapper or trust override is required"))
+
+    required_fail = any(check["status"] == "fail" or
+                        (check["name"] in required and check["status"] in ("unknown", "blocked"))
+                        for check in checks)
+    overall = "fail" if required_fail else ("attention" if any(check["status"] in ("manual", "unknown", "blocked") for check in checks) else "ok")
     return {"overall": overall, "checks": checks}, required_fail
 
 
@@ -312,7 +401,7 @@ def main(argv=None):
     parser.add_argument("--json", action="store_true", help="print stable JSON checks")
     parser.add_argument("--pi", action="store_true", help="require this checkout's Pi registration")
     parser.add_argument("--codex", action="store_true", help="require this checkout's Codex skill/hooks")
-    parser.add_argument("--claude", action="store_true", help="require the root Claude plugin package")
+    parser.add_argument("--claude", action="store_true", help="require this checkout's automatic Claude lifecycle hooks")
     args = parser.parse_args(argv)
     requested = [name for name in ("pi", "codex", "claude") if getattr(args, name)]
     report, failed = collect_status(requested)
