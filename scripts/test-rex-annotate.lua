@@ -605,4 +605,23 @@ test("copy and insert receive identical multiline Unicode and pipe content", fun
   session:close(true)
 end)
 
+test("startup failure displays multiline actionable errors without a scratch-buffer crash", function()
+  local view = dofile(root .. "annotate_view.lua")
+  local system = vim.system
+  vim.system = function() return { wait = function() return { code = 1, stderr = "underlying failure\ntrace detail" } end } end
+  local ok, err = pcall(view.start, { session_id = "session:test", block_id = "block:source" })
+  vim.system = system
+  assert(ok, err)
+  local lines = vim.api.nvim_buf_get_lines(0, 0, -1, false)
+  eq("Rex Annotate could not open:", lines[1])
+  local displayed = table.concat(lines, "\n")
+  assert(displayed:find("underlying failure", 1, true), vim.inspect(lines))
+  assert(displayed:find("trace detail", 1, true), "remaining error lines were lost: " .. vim.inspect(lines))
+  eq("Press q to close. No input was sent.", lines[#lines])
+  assert(not displayed:find("replacement string", 1, true), displayed)
+  local quit = vim.fn.maparg("q", "n", false, true)
+  eq(1, quit.buffer)
+  assert(type(quit.callback) == "function")
+end)
+
 print("PASS " .. passed .. " Rex annotation tests")

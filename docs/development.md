@@ -13,7 +13,8 @@ network access and use disposable agent homes; no real agent prompt is sent:
 ```sh
 python3 scripts/test-rex-annotate-live.py --overlay
 python3 scripts/test-rex-annotate-live.py --overlay --installed --leave-focus
-python3 scripts/test-native-overlays.py # fake Codex/Claude s/S, never real agents
+python3 scripts/test-native-overlays.py # fake Codex/Claude/CUX s/S, never real agents
+python3 scripts/test-startup-errors.py # safe multiline failure screen, no agent input
 python3 scripts/test-native-startup.py --agent claude # plain CLI + user hooks, no model requests
 # --agent codex stops with exit 2 at an unapproved /hooks gate
 swift scripts/test-rex-annotate-clipboard.swift # restores all clipboard data types
@@ -58,6 +59,7 @@ Pi process's socket. Native integration guide documents owned metadata cleanup.
 3. Build the reproducible archive with `scripts/brew-package.py --source-url` set
    to the exact versioned GitHub release asset URL; verify its SHA-256.
 4. Publish the tested commit/tag and upload the archive to the matching GitHub release.
+   Set the release title with `--title vX.Y.Z`; the title must exactly match the tag.
 5. Download the public asset and verify its digest before updating `Formula/rex-annotation.rb`
    in this repository. Do not rebuild/replace a published archive to update its formula.
 6. Run `brew test arrokh/rex-annotation/rex-annotation` and a fresh-HOME setup smoke

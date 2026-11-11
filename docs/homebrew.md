@@ -9,8 +9,7 @@ rex-annotation install --detect --reload-rex &&
 rex-annotation status
 ```
 
-For an installation already using the new tap (old `arrokh/tap` installations
-must [migrate first](#migrate-from-the-old-tap)):
+For an existing installation using this tap:
 
 ```sh
 brew update &&
@@ -29,39 +28,6 @@ Brew installs program files only. User configuration is created by the explicit
 setup command; there is no `post_install` modification of your home directory.
 `--reload-rex` validates and activates Rex config, never an agent process.
 
-## Migrate from the old tap
-
-For an installation from `arrokh/tap`, switch its Homebrew receipt before removing
-the legacy tap. Do not uninstall the plugin first:
-
-```sh
-brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation &&
-brew reinstall arrokh/rex-annotation/rex-annotation &&
-brew test arrokh/rex-annotation/rex-annotation &&
-brew cleanup --dry-run arrokh/rex-annotation/rex-annotation &&
-printf 'Remove the obsolete versions shown above and untap arrokh/tap? [y/N] ' &&
-read -r answer &&
-case "$answer" in
-  y|Y)
-    brew cleanup arrokh/rex-annotation/rex-annotation &&
-    brew untap arrokh/tap &&
-    rex-annotation status
-    ;;
-  *) printf 'Cleanup cancelled; old tap retained.\n' ;;
-esac
-```
-
-The chain stops on any failed command. Review the dry-run before answering `y`;
-Enter or any other answer keeps the old versions and tap. Homebrew checks receipts
-in older installed versions too; the scoped cleanup removes obsolete plugin
-versions, not user configuration. Use the fully qualified name while both taps
-exist; otherwise cleanup may select the frozen legacy formula and leave old
-versions. Do not force an untap that still reports installed packages; keep the
-old tap until their receipts are resolved. The stable `opt` path and existing
-agent/Rex configuration stay unchanged; no agent reload or authentication change
-is needed. The old repository is archived with a migration pointer and a frozen
-formula for historical links. All future formula updates happen here.
-
 ## Upgrade-safe paths
 
 The Brew executable exports `REX_ANNOTATION_ROOT` through the stable
@@ -79,7 +45,7 @@ From a Git checkout:
 
 ```sh
 python3 scripts/brew-package.py \
-  --source-url https://github.com/arrokh/rex-annotation/releases/download/v0.1.4/rex-annotation-0.1.4.tar.gz
+  --source-url https://github.com/arrokh/rex-annotation/releases/download/v0.1.5/rex-annotation-0.1.5.tar.gz
 ```
 
 Use the actual version from `package.json`. The generator produces:

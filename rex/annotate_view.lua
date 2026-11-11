@@ -465,7 +465,10 @@ function M.start(target)
     else M.open(snapshot, target, services) end
   end)
   if not ok then
-    local buf = scratch({ "Rex Annotate could not open:", tostring(err), "", "Press q to close. No input was sent." })
+    local error_lines = { "Rex Annotate could not open:" }
+    vim.list_extend(error_lines, vim.split(tostring(err), "\n", { plain = true }))
+    vim.list_extend(error_lines, { "", "Press q to close. No input was sent." })
+    local buf = scratch(error_lines)
     vim.api.nvim_win_set_buf(0, buf)
     mapping(buf, "n", "q", function() vim.cmd("qa!") end)
   end

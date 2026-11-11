@@ -28,8 +28,7 @@ rex-annotation status
 The [formula](../Formula/rex-annotation.rb) lives in this same repository. The
 explicit tap URL is required because the repo is not named `homebrew-*`. Brew
 installs code, Python and Neovim; it does not write to your user configuration.
-Install Rex and the coding-agent CLIs separately. Existing `arrokh/tap` users
-should follow the [migration steps](homebrew.md#migrate-from-the-old-tap).
+Install Rex and the coding-agent CLIs separately.
 
 ## Source checkout
 

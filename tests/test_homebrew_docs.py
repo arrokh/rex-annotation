@@ -17,7 +17,7 @@ class HomebrewDocsTests(unittest.TestCase):
         section = (ROOT / path).read_text().split(heading + "\n", 1)[1].split("\n## ", 1)[0]
         return re.search(r"```sh\n(.*?)```", section, re.DOTALL).group(1)
 
-    def run_example(self, script, *, failure=None, answer="y\n"):
+    def run_example(self, script, *, failure=None):
         with tempfile.TemporaryDirectory(prefix="rex-brew-docs-") as directory:
             base = Path(directory)
             commands = base / "commands"
@@ -38,39 +38,34 @@ class HomebrewDocsTests(unittest.TestCase):
             environment = {"HOME": str(base), "PATH": str(commands), "TEST_LOG": str(log),
                            "TEST_FAILURE": json.dumps(failure), "PYTHONDONTWRITEBYTECODE": "1"}
             result = subprocess.run([shutil.which("bash"), str(example)], env=environment,
-                                    input=answer, text=True, capture_output=True, timeout=5)
+                                    input="", text=True, capture_output=True, timeout=5)
             calls = [json.loads(line) for line in log.read_text().splitlines()] if log.exists() else []
             return result, calls
 
-    def migration(self):
-        return self.code_block("docs/homebrew.md", "## Migrate from the old tap")
+    def test_public_docs_do_not_link_removed_old_tap_migration(self):
+        for path in ("README.md", "docs/homebrew.md", "docs/setup.md", "docs/development.md"):
+            text = (ROOT / path).read_text()
+            with self.subTest(path=path):
+                self.assertNotIn("migrate-from-the-old-tap", text)
+                self.assertNotIn("arrokh/tap", text)
 
-    def test_migration_stops_at_each_failed_command(self):
-        expected = [
-            ["brew", "tap", TAP, "https://github.com/arrokh/rex-annotation"],
-            ["brew", "reinstall", FORMULA],
-            ["brew", "test", FORMULA],
-            ["brew", "cleanup", "--dry-run", FORMULA],
-            ["brew", "cleanup", FORMULA],
-            ["brew", "untap", "arrokh/tap"],
-            ["rex-annotation", "status"],
-        ]
-        for index, failed in enumerate(expected):
+    def test_upgrade_example_stops_at_failed_brew_command(self):
+        text = (ROOT / "docs/homebrew.md").read_text()
+        script = re.findall(r"```sh\n(.*?)```", text, re.DOTALL)[1]
+        commands = [["brew", "update"], ["brew", "upgrade", FORMULA], ["rex-annotation", "status"]]
+        for index, failed in enumerate(commands):
             with self.subTest(command=failed):
-                result, calls = self.run_example(self.migration(), failure=failed)
-                self.assertEqual(calls, expected[:index + 1])
+                result, calls = self.run_example(script, failure=failed)
                 self.assertEqual(result.returncode, 42)
-
-    def test_migration_requires_explicit_confirmation_after_dry_run(self):
-        for answer in ("n\n", "\n", ""):
-            with self.subTest(answer=answer):
-                _, calls = self.run_example(self.migration(), answer=answer)
-                self.assertEqual(len(calls), 4)
-                self.assertEqual(calls[-1], ["brew", "cleanup", "--dry-run", FORMULA])
-        result, calls = self.run_example(self.migration())
+                self.assertEqual(calls, commands[:index + 1])
+        result, calls = self.run_example(script)
         self.assertEqual(result.returncode, 0, result.stderr)
-        self.assertEqual(calls[-3:], [["brew", "cleanup", FORMULA],
-                                     ["brew", "untap", "arrokh/tap"], ["rex-annotation", "status"]])
+        self.assertEqual(calls, commands)
+
+    def test_release_title_convention_is_version_only(self):
+        text = (ROOT / "docs/development.md").read_text()
+        self.assertIn("--title vX.Y.Z", text)
+        self.assertIn("title must exactly match the tag", text)
 
     def test_install_examples_do_not_run_setup_after_failed_brew(self):
         for path, heading in (("README.md", "## Install"), ("docs/setup.md", "## Homebrew"),
