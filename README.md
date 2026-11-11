@@ -8,9 +8,9 @@ macOS · [MIT](LICENSE)
 ## Install
 
 ```sh
-brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation
-brew install arrokh/rex-annotation/rex-annotation
-rex-annotation install --detect --reload-rex
+brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation &&
+brew install arrokh/rex-annotation/rex-annotation &&
+rex-annotation install --detect --reload-rex &&
 rex-annotation status
 ```
 

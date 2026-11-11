@@ -3,17 +3,18 @@
 ## Install or upgrade
 
 ```sh
-brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation
-brew install arrokh/rex-annotation/rex-annotation
-rex-annotation install --detect --reload-rex
+brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation &&
+brew install arrokh/rex-annotation/rex-annotation &&
+rex-annotation install --detect --reload-rex &&
 rex-annotation status
 ```
 
-For an existing installation:
+For an installation already using the new tap (old `arrokh/tap` installations
+must [migrate first](#migrate-from-the-old-tap)):
 
 ```sh
-brew update
-brew upgrade arrokh/rex-annotation/rex-annotation
+brew update &&
+brew upgrade arrokh/rex-annotation/rex-annotation &&
 rex-annotation status
 ```
 
@@ -34,22 +35,30 @@ For an installation from `arrokh/tap`, switch its Homebrew receipt before removi
 the legacy tap. Do not uninstall the plugin first:
 
 ```sh
-brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation
-brew reinstall arrokh/rex-annotation/rex-annotation
-brew test arrokh/rex-annotation/rex-annotation
-brew cleanup --dry-run arrokh/rex-annotation/rex-annotation # review obsolete versions
-brew cleanup arrokh/rex-annotation/rex-annotation
-brew untap arrokh/tap
-rex-annotation status
+brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation &&
+brew reinstall arrokh/rex-annotation/rex-annotation &&
+brew test arrokh/rex-annotation/rex-annotation &&
+brew cleanup --dry-run arrokh/rex-annotation/rex-annotation &&
+printf 'Remove the obsolete versions shown above and untap arrokh/tap? [y/N] ' &&
+read -r answer &&
+case "$answer" in
+  y|Y)
+    brew cleanup arrokh/rex-annotation/rex-annotation &&
+    brew untap arrokh/tap &&
+    rex-annotation status
+    ;;
+  *) printf 'Cleanup cancelled; old tap retained.\n' ;;
+esac
 ```
 
-Untap only after reinstall and test succeed. Homebrew checks receipts in older
-installed versions too; the scoped cleanup removes obsolete plugin versions, not
-user configuration. Use the fully qualified name while both taps exist;
-otherwise cleanup may select the frozen legacy formula and leave old versions.
-Review its dry-run first. Do not force an untap that still
-reports installed packages; keep the old tap until their receipts are resolved.
-The stable `opt` path and existing agent/Rex configuration stay unchanged; no agent reload or authentication change
+The chain stops on any failed command. Review the dry-run before answering `y`;
+Enter or any other answer keeps the old versions and tap. Homebrew checks receipts
+in older installed versions too; the scoped cleanup removes obsolete plugin
+versions, not user configuration. Use the fully qualified name while both taps
+exist; otherwise cleanup may select the frozen legacy formula and leave old
+versions. Do not force an untap that still reports installed packages; keep the
+old tap until their receipts are resolved. The stable `opt` path and existing
+agent/Rex configuration stay unchanged; no agent reload or authentication change
 is needed. The old repository is archived with a migration pointer and a frozen
 formula for historical links. All future formula updates happen here.
 
