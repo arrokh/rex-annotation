@@ -38,12 +38,15 @@ class LauncherTests(unittest.TestCase):
             executable=base/'codex'
             executable.write_text('#!'+sys.executable+'\nimport os;print(os.environ["REX_ANNOTATION_ROOT"])\n')
             executable.chmod(0o755)
+            rex = base/'rex'
+            rex.write_text('#!'+sys.executable+'\nimport json,sys\nprint(json.dumps({"actions":[{"name":"annotate_open"}]})) if "actions" in sys.argv else print("ok")\n')
+            rex.chmod(0o755)
             environment={**os.environ,'PATH':str(base)+os.pathsep+os.environ['PATH'],'REX_SESSION':'owned','REX_BLOCK':'owned',
                          'REX_ANNOTATION_ROOT':str(alias)}
             result=subprocess.run([sys.executable,str(ROOT/'bin/rex-annotation'),'codex'],env=environment,capture_output=True,text=True,timeout=5)
             self.assertEqual(result.returncode,0,result.stderr)
             self.assertEqual(result.stdout.strip(),str(alias))
-            result=subprocess.run([sys.executable,str(ROOT/'bin/rex-annotation'),'install'],
+            result=subprocess.run([sys.executable,str(ROOT/'bin/rex-annotation'),'install','--rex'],
                                   env={**environment,'HOME':str(base/'home'),'XDG_CONFIG_HOME':str(base/'config')},
                                   capture_output=True,text=True,timeout=5)
             self.assertEqual(result.returncode,0,result.stderr)

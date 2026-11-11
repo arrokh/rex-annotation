@@ -18,7 +18,7 @@ def _usage():
           "       rex-annotation doctor [status options]\n"
           "       rex-annotation --version\n"
           "       rex-annotation codex|claude [agent options...]\n"
-          "Install configures Rex only by default; agent integrations are opt-in.")
+          "Install automatically configures detected Pi, Codex, and Claude/CUX integrations.")
 
 
 def main():

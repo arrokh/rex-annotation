@@ -8,7 +8,9 @@ npm test
 
 The unit tests use only synthetic sessions, transcript fixtures, and service
 callbacks. Optional live tests create/delete their own Rex sessions. They deny
-network access and use disposable agent homes; no real agent prompt is sent:
+network access and use disposable agent homes; no real model request is sent.
+The native Codex check uses synthetic saved history and offline fixture input to
+trigger deferred lifecycle hooks; no user credentials or live sessions are used:
 
 ```sh
 python3 scripts/test-rex-annotate-live.py --overlay
@@ -16,7 +18,7 @@ python3 scripts/test-rex-annotate-live.py --overlay --installed --leave-focus
 python3 scripts/test-native-overlays.py # fake Codex/Claude/CUX s/S, never real agents
 python3 scripts/test-startup-errors.py # safe multiline failure screen, no agent input
 python3 scripts/test-native-startup.py --agent claude # plain CLI + user hooks, no model requests
-# --agent codex stops with exit 2 at an unapproved /hooks gate
+python3 scripts/test-native-startup.py --agent codex # automatic scoped trust + plain CLI, no model requests
 swift scripts/test-rex-annotate-clipboard.swift # restores all clipboard data types
 ```
 

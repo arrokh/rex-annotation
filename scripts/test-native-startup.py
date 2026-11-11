@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Opt-in native hook startup checks. Disposable homes, network denied, no prompts."""
+"""Native hook checks in disposable homes; network denied, no real model requests."""
 import argparse
 import importlib.util
 import json
@@ -10,6 +10,7 @@ import subprocess
 import sys
 import tempfile
 import time
+import uuid
 from urllib.parse import unquote, urlsplit
 
 sys.dont_write_bytecode = True
@@ -55,10 +56,42 @@ def run(agents, launcher=False):
                         '[features]\ndaemon_auto_start=false\n'
                         '[model_providers.fixture]\nname="fixture"\nbase_url="http://127.0.0.1:9/v1"\nenv_key="REX_TEST_KEY"\nwire_api="responses"\n')
                     environment += ["CODEX_HOME=" + str(config), "REX_TEST_KEY=fixture-not-a-real-key"]
-                    options = ["--no-alt-screen", "-C", str(home)]
+                    # A blank CLI may create its thread lazily. Resume only owned
+                    # synthetic persisted history to exercise lifecycle binding.
+                    # Deferred hooks receive only offline fixture input below.
+                    resume_id = str(uuid.uuid4())
+                    history = config / "sessions/2026/01/02" / ("rollout-2026-01-02T03-04-05-" + resume_id + ".jsonl")
+                    history.parent.mkdir(parents=True)
+                    entries = [
+                        {"timestamp": "2026-01-02T03:04:05.000Z", "type": "session_meta", "payload": {
+                            "id": resume_id, "timestamp": "2026-01-02T03:04:05.000Z", "cwd": str(home),
+                            "originator": "codex_cli_rs", "cli_version": "0.167.1", "source": "cli",
+                            "model_provider": "fixture", "base_instructions": {"text": "Synthetic startup fixture."}}},
+                        {"timestamp": "2026-01-02T03:04:06.000Z", "type": "response_item", "payload": {
+                            "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Synthetic history only."}]}},
+                        {"timestamp": "2026-01-02T03:04:07.000Z", "type": "response_item", "payload": {
+                            "type": "message", "role": "assistant", "phase": "final_answer",
+                            "content": [{"type": "output_text", "text": "Synthetic saved answer."}]}},
+                    ]
+                    history.write_text("".join(json.dumps(entry) + "\n" for entry in entries))
+                    options = ["--no-alt-screen", "-C", str(home), "resume", resume_id]
                 setup_environment = {key:value for key,value in (entry.split("=", 1) for entry in environment)}
-                installed = subprocess.run([sys.executable, str(ROOT / "bin/rex-annotation"), "install", "--" + agent],
-                                           env=setup_environment, capture_output=True, text=True, timeout=10)
+                # Shadow Rex only for setup. An unavailable REX_SERVER may fall
+                # back to the user's live server, so it is not an isolation boundary.
+                setup_commands = home / "setup-bin"
+                setup_commands.mkdir()
+                setup_rex = setup_commands / "rex"
+                setup_rex.write_text("#!" + sys.executable + "\nraise SystemExit(1)\n")
+                setup_rex.chmod(0o755)
+                setup_environment["PATH"] = str(setup_commands) + os.pathsep + setup_environment["PATH"]
+                setup_command = [sys.executable, str(ROOT / "bin/rex-annotation"), "install", "--" + agent]
+                # Codex configuration applies its own deny-network sandbox;
+                # nesting sandbox-exec is rejected by macOS. Claude setup only
+                # writes local JSON, and stays under this outer test sandbox.
+                if agent != "codex":
+                    setup_command = ["/usr/bin/sandbox-exec", "-p", profile, *setup_command]
+                installed = subprocess.run(setup_command, env=setup_environment,
+                                           capture_output=True, text=True, timeout=40)
                 assert installed.returncode == 0, installed.stderr
                 command = ["/bin/sh", "-c", 'exec /usr/bin/env -i "REX_SESSION=$REX_SESSION" "REX_BLOCK=$REX_BLOCK" "$@"', "rex-startup-fixture"]
                 native = [shutil.which("python3"), str(ROOT / "bin/rex-annotation"), agent] if launcher else [executable]
@@ -71,10 +104,21 @@ def run(agents, launcher=False):
                 block = created["initial_windows"][0]["block_ids"][0]
                 print("OWNED",agent,session,block,flush=True)
                 deadline, screen, record = time.monotonic() + 20, "", None
+                fixture_input_at, fixture_submitted = None, False
                 while time.monotonic() < deadline:
                     screen = LIVE.terminal(session,block,"format",{"format":"text","unwrap":True})["content"]
+                    # Codex can defer lifecycle hooks until first input. This is
+                    # task-only synthetic data for an unreachable fixture model:
+                    # all networking is denied and no real credential is present.
+                    if agent == "codex" and not fixture_submitted:
+                        if fixture_input_at is None and "Ask Codex to do anything" in screen:
+                            LIVE.terminal(session, block, "write", {"data": "Offline Rex hook fixture"})
+                            fixture_input_at = time.monotonic()
+                        elif fixture_input_at is not None and time.monotonic() - fixture_input_at >= 0.6:
+                            LIVE.terminal(session, block, "write", {"data": "\r"})
+                            fixture_submitted = True
                     if "Hooks need review" in screen:
-                        break  # Human trust gate: no approval or retry is attempted.
+                        break  # Installer trust must already be complete; never bypass or retry.
                     if "rex-annotation " + agent.title() + " hook:" in screen:
                         break
                     files = list((state / "rex-annotation/reply-bindings").glob("*.json"))
@@ -107,10 +151,10 @@ def run(agents, launcher=False):
                         capture_output=True,text=True,timeout=6)
                     assert validated.returncode == 0, validated.stderr
                     result = {"agent":agent,"status":"verified","launch":"launcher" if launcher else "plain-command",
-                              "pid":pid,"binding":"exact native SessionStart transcript", "synthetic_transcript_seeded":seeded}
+                              "pid":pid,"binding":"exact native lifecycle transcript", "synthetic_transcript_seeded":seeded,
+                              "synthetic_resume":agent == "codex", "offline_fixture_input":fixture_submitted}
                 elif "Hooks need review" in screen:
-                    result = {"agent":agent,"status":"needs-approval","launch":"launcher" if launcher else "plain-command",
-                              "next":"Review exact Rex Annotation hooks in Codex /hooks"}
+                    raise AssertionError("Automatic Codex setup left hook definitions untrusted:\n" + screen[-2000:])
                 else:
                     raise AssertionError(agent + " did not register its SessionStart binding:\n" + screen[-3000:])
                 results.append(result)
@@ -124,7 +168,7 @@ def run(agents, launcher=False):
             failures.extend((session,"still present") for session in sessions if session in current)
             assert not failures, failures
             print("PASS cleanup: all owned native-startup Rex sessions absent",flush=True)
-    return 2 if any(result["status"]=="needs-approval" for result in results) else 0
+    return 0
 
 
 if __name__=="__main__":

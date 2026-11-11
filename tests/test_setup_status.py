@@ -151,6 +151,29 @@ class SetupStatusTests(unittest.TestCase):
         self.assertFalse(any('install' in c or 'reload' in c for c in calls))
         self.assertTrue(any('actions' in c and '--autostart=false' in c for c in calls))
 
+    def test_codex_status_verifies_native_trust_and_reports_pending_setup_as_failure(self):
+        skill = self.home/".agents/skills/rex-annotation"
+        skill.parent.mkdir(parents=True)
+        skill.symlink_to(ROOT/"integrations/codex/skills/rex-annotation")
+        template = json.loads((ROOT/"integrations/codex/hooks/hooks.json").read_text())
+        for groups in template["hooks"].values():
+            for group in groups:
+                for handler in group["hooks"]:
+                    handler["command"] = "python3 " + str(ROOT/"integrations/codex/hooks/register.py")
+        hooks = self.home/".codex/hooks.json"
+        hooks.parent.mkdir()
+        hooks.write_text(json.dumps(template))
+        import codex_setup
+        for native, expected, failed_expected in (("ok", "ok", False), ("needs-setup", "fail", True),
+                                                  ("blocked", "blocked", True)):
+            with self.subTest(native=native), mock.patch.object(codex_setup, "inspect_codex",
+                    return_value={"status": native, "detail": "native fixture"}):
+                report, failed = self.report(requested={"codex"})
+                self.assertEqual(failed, failed_expected)
+                check = next(item for item in report["checks"] if item["name"] == "codex_trust")
+                self.assertEqual(check["status"], expected)
+                self.assertNotIn("/hooks", check["fix"])
+
     def test_timeout_output_bytes_produce_actionable_result_not_traceback(self):
         with mock.patch.object(STATUS.subprocess,"run",side_effect=subprocess.TimeoutExpired(['fixture'],1,output=b'partial',stderr=b'error')):
             code,detail=STATUS._run(['fixture'],timeout=1)

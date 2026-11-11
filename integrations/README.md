@@ -17,9 +17,15 @@ codex
 
 The installer links `~/.agents/skills/rex-annotation` and merges the bundled
 lifecycle hooks into `$CODEX_HOME/hooks.json` (normally `~/.codex/hooks.json`).
-Unrelated hooks remain intact. **Review and trust the new local hooks yourself
-in Codex's `/hooks` screen.** The installer never bypasses hook trust, changes
-approval policy, or starts an agent.
+Plain `rex-annotation install` detects Codex automatically; `--codex` is only a
+scoped selection. Setup enables the hooks feature and approves only the exact
+installed Rex Annotation hook definitions, without another flag or prompt.
+It uses Codex's `hooks/list` keys/current hashes and `config/batchWrite` trust
+persistence, then verifies the hooks are enabled and trusted. The config-only
+app-server is isolated, bounded, and network-denied; it never starts a coding-agent thread.
+Unrelated hooks, explicit disables, authentication, and sandbox/tool-approval
+policy remain intact. Unsupported protocol or policy blockers fail visibly;
+no hook-trust bypass flag or guessed approval hash is used.
 
 The trusted hooks register the exact hook-provided `session_id` and
 `transcript_path` at SessionStart and UserPromptSubmit, refresh at Stop, and
@@ -58,7 +64,7 @@ the matching binding. Subagent events are ignored.
 
 ### Claude through CUX
 
-Run `cux` or `cux run` normally after the same `--claude`/`--detect` setup. CUX
+Run `cux` or `cux run` normally after plain `rex-annotation install`. CUX
 is a Claude launcher, not a fourth agent. Detection works with CUX alone on PATH.
 The foreground CUX PTY wrapper owns delivery; the native Claude child's PID/start
 identity owns transcript validity. Child exit makes the old binding unusable, and
@@ -170,6 +176,10 @@ Read operations return no replies until persistence; delivery still requires an
 actual matching transcript. macOS process identity uses libproc with owner/PID
 and microsecond-start checks, not setuid `ps`.
 
-The equivalent Codex startup check stops at its expected hook-trust screen and
-returns exit code 2 until a human approves the hooks. It does not fabricate or
-bypass trust. Temporary Rex sessions/homes are deleted on both outcomes.
+The equivalent Codex check verifies automatic installer trust followed by ordinary
+native binding, with no manual approval or bypass. Codex can defer lifecycle hooks
+until first input. Its smoke resumes synthetic owned history and submits only an
+offline fixture input to an unreachable fixture model, with all networking denied
+and no real credentials. It cannot send a real model request. An unexpected
+hook-review screen fails the smoke test. Temporary Rex sessions/homes are deleted
+on both success and failure.

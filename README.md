@@ -10,14 +10,15 @@ macOS · [MIT](LICENSE)
 ```sh
 brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation &&
 brew install arrokh/rex-annotation/rex-annotation &&
-rex-annotation install --detect --reload-rex &&
+rex-annotation install &&
 rex-annotation status
 ```
 
 **Neovim is required; there is no vi/Vim fallback.** Brew installs Neovim and Python.
 Install Rex (including its CLI) and your chosen agent CLIs separately.
-Setup detects installed agents and reloads **Rex config only**—never Pi or another
-agent. Codex hook approval remains manual in `/hooks`.
+Setup automatically configures installed Pi, Codex, and Claude/CUX, including
+trusting only its own Codex hooks. It activates running **Rex config only**—never
+reloads Pi or another agent. No extra setup flags or manual hook approval are needed.
 
 See [source setup](docs/setup.md).
 
