@@ -45,6 +45,19 @@ function M.open(snapshot, target, services, source_title)
   local source = scratch(lines)
   local win = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(win, source)
+  -- Keep help in an owned split: winbar truncates long detail titles and cannot reflow.
+  vim.cmd("aboveleft 1new")
+  local header_win = vim.api.nvim_get_current_win()
+  local header = scratch({ "" })
+  vim.api.nvim_win_set_buf(header_win, header)
+  vim.wo[header_win].winbar = ""
+  vim.wo[header_win].statusline = " "
+  vim.wo[header_win].cursorline = false
+  vim.wo[header_win].number = false
+  vim.wo[header_win].relativenumber = false
+  vim.wo[header_win].wrap = false
+  vim.wo[header_win].winfixheight = true
+  vim.api.nvim_set_current_win(win)
   vim.wo[win].wrap = true
   vim.wo[win].number = true
   vim.wo[win].cursorline = true
@@ -54,6 +67,44 @@ function M.open(snapshot, target, services, source_title)
   local group = vim.api.nvim_create_augroup("rex-annotate-" .. source, { clear = true })
   local editor, preview
   local closed = false
+  local function wrap_cells(text, width)
+    local result, line = {}, ""
+    for index = 0, vim.fn.strchars(text) - 1 do
+      local char = vim.fn.strcharpart(text, index, 1)
+      if line ~= "" and vim.fn.strdisplaywidth(line .. char) > width then
+        result[#result + 1], line = line, ""
+      end
+      line = line .. char
+    end
+    result[#result + 1] = line
+    return result
+  end
+  local function refresh_header()
+    if closed or not vim.api.nvim_win_is_valid(header_win) or not vim.api.nvim_win_is_valid(win) then return end
+    local width = math.max(1, vim.api.nvim_win_get_width(header_win))
+    local help = wrap_cells(tostring(source_title or "SNAPSHOT"), width)
+    local line = ""
+    for _, action in ipairs({ "v/V select", "Enter note", "m edit", "p preview", "y copy", "s insert", "S send now", "q close" }) do
+      local candidate = line == "" and action or (line .. " · " .. action)
+      if vim.fn.strdisplaywidth(candidate) <= width then
+        line = candidate
+      else
+        if line ~= "" then help[#help + 1] = line end
+        local parts = wrap_cells(action, width)
+        for index = 1, #parts - 1 do help[#help + 1] = parts[index] end
+        line = parts[#parts]
+      end
+    end
+    if line ~= "" then help[#help + 1] = line end
+    vim.bo[header].modifiable = true
+    vim.api.nvim_buf_set_lines(header, 0, -1, false, help)
+    vim.bo[header].modifiable = false
+    local available = vim.api.nvim_win_get_height(win) + vim.api.nvim_win_get_height(header_win)
+    local height = math.min(#help, math.max(1, available - 3))
+    if vim.api.nvim_win_get_height(header_win) ~= height then vim.api.nvim_win_set_height(header_win, height) end
+    vim.api.nvim_win_set_cursor(header_win, { 1, 0 })
+  end
+  vim.api.nvim_create_autocmd({ "VimResized", "WinResized" }, { group = group, callback = refresh_header })
   local function refresh()
     vim.api.nvim_buf_clear_namespace(source, ns, 0, -1)
     for _, note in ipairs(draft.notes) do
@@ -72,7 +123,8 @@ function M.open(snapshot, target, services, source_title)
         virt_text_pos = "eol",
       })
     end
-    vim.wo[win].winbar = statusline_text(source_title or "SNAPSHOT") .. " %<· v/V select · Enter note · m edit · p preview · y copy · s insert · S send now · q close"
+    vim.wo[win].winbar = ""
+    refresh_header()
     vim.wo[win].statusline = " Rex Annotate · " .. #draft.notes .. " notes · " .. statusline_text(target.block_id) .. " %=%l:%c "
   end
   local function discard(message)
@@ -87,7 +139,8 @@ function M.open(snapshot, target, services, source_title)
     if vim.api.nvim_win_is_valid(win) and vim.api.nvim_buf_is_valid(source) then
       vim.api.nvim_win_set_buf(win, source)
     end
-    for _, buf in ipairs({ editor or false, preview or false, source }) do
+    if vim.api.nvim_win_is_valid(header_win) then vim.api.nvim_win_close(header_win, true) end
+    for _, buf in ipairs({ editor or false, preview or false, header, source }) do
       if buf and vim.api.nvim_buf_is_valid(buf) then vim.api.nvim_buf_delete(buf, { force = true }) end
     end
     if services.quit then services.quit() end

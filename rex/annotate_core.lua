@@ -125,7 +125,7 @@ function M.identity(process)
   local agent
   if base == "codex" then
     agent = "Codex"
-  elseif base == "claude" or path:match("/claude/versions/[%d.]+$") then
+  elseif base == "claude" or base == "cux" or path:match("/claude/versions/[%d.]+$") then
     agent = "Claude Code"
   elseif base:match("^node") and (argv0 == "pi" or script:match("/pi%-coding%-agent/dist/.*cli%.js$")) then
     agent = "Pi"

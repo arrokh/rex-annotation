@@ -98,6 +98,16 @@ class SetupStatusTests(unittest.TestCase):
             self.assertIn("preserves this policy", check["fix"])
             self.assertTrue(failed)
 
+    def test_cux_counts_as_claude_not_a_separate_agent(self):
+        report, _ = self.report(requested={"claude"}, missing={"claude"})
+        check = next(c for c in report["checks"] if c["name"] == "claude_cli")
+        self.assertEqual(check["status"], "ok")
+        self.assertIn("CUX", check["detail"])
+        self.assertFalse(any(c["name"].startswith("cux_") for c in report["checks"]))
+        report, _ = self.report(requested={"claude"}, missing={"claude", "cux"})
+        check = next(c for c in report["checks"] if c["name"] == "claude_cli")
+        self.assertEqual(check["status"], "fail")
+
     def test_required_missing_neovim_cannot_report_success(self):
         report,failed=self.report(missing={"nvim"})
         self.assertTrue(failed)

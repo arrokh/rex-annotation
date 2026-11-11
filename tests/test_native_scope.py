@@ -97,6 +97,19 @@ class NativeScopeTests(unittest.TestCase):
         self.assertEqual(self.resolve(agent="claude", paths={42: self.output["foreground"]["path"]}),
                          ("exact-session", "exact-block", 42))
 
+    def test_cux_is_claude_with_separate_native_child_identity(self):
+        self.output['foreground']['path'] = '/opt/cux'
+        self.write_rex()
+        graph = {100: 60, 60: 50, 50: 42, 42: 1}
+        paths = {42: '/opt/cux', 50: '/opt/claude'}
+        with mock.patch.object(native_scope, '_process_info', side_effect=self.graph(graph, paths)):
+            scope = native_scope.resolve_scope('claude', self.env, 100)
+        self.assertEqual(scope[:3], ('exact-session', 'exact-block', 42))
+        self.assertEqual(scope.native_child_pid, 50)
+        paths[60] = '/nested/claude'
+        with mock.patch.object(native_scope, '_process_info', side_effect=self.graph(graph, paths)):
+            self.assertIsNone(native_scope.resolve_scope('claude', self.env, 100))
+
     def test_query_rejects_malformed_oversized_and_stalled_output(self):
         for body, message in (("print('not-json')", "malformed"),
                               ("print('x' * 65537)", "oversized"),

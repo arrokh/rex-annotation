@@ -41,7 +41,9 @@ Preview, copy, insertion, and Send use the same formatter.
   terminal panes can still annotate an immutable terminal snapshot (copy only).
 
 The annotation pane is centered and retains the source pane's width, including
-split and zoomed layouts. Closing it restores the original source focus unless
+split and zoomed layouts. Detail-view shortcuts stay in a separate multiline
+header that reflows as the pane narrows; reply text and quote coordinates are
+unchanged. Closing it restores the original source focus unless
 you deliberately moved to another pane/window.
 
 
