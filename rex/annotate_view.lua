@@ -41,6 +41,10 @@ function M.open(snapshot, target, services, source_title)
   vim.o.writebackup = false
   vim.o.clipboard = ""
   vim.o.mouse = ""
+  -- Saved marks must remain obvious without sharing the active Visual selection color.
+  local annotation_style = { fg = "#1b1b1b", bg = "#f5c542", bold = true, ctermfg = 0, ctermbg = 11 }
+  vim.api.nvim_set_hl(0, "RexAnnotationSpan", annotation_style)
+  vim.api.nvim_set_hl(0, "RexAnnotationNote", annotation_style)
   local lines = vim.split(snapshot, "\n", { plain = true })
   local source = scratch(lines)
   local win = vim.api.nvim_get_current_win()
@@ -111,7 +115,7 @@ function M.open(snapshot, target, services, source_title)
       local start_row, start_col = note.range[1] - 1, note.range[2]
       local end_row, end_col = note.range[3] - 1, note.range[4]
       vim.api.nvim_buf_set_extmark(source, ns, start_row, start_col, {
-        end_row = end_row, end_col = end_col, hl_group = "Visual", priority = 120,
+        end_row = end_row, end_col = end_col, hl_group = "RexAnnotationSpan", priority = 120,
       })
       local label_row, label_col = end_row, end_col
       if note.range.mode == "V" and end_col == 0 and end_row > start_row then
@@ -119,7 +123,7 @@ function M.open(snapshot, target, services, source_title)
         label_col = #lines[label_row + 1]
       end
       vim.api.nvim_buf_set_extmark(source, ns, label_row, label_col, {
-        virt_text = { { "  [" .. note.id .. "] " .. vim.fn.strcharpart(note.comment:gsub("\n", " "), 0, 70), "DiagnosticInfo" } },
+        virt_text = { { "  [" .. note.id .. "] " .. vim.fn.strcharpart(note.comment:gsub("\n", " "), 0, 70), "RexAnnotationNote" } },
         virt_text_pos = "eol",
       })
     end

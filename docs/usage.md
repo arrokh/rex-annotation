@@ -7,7 +7,8 @@
    each row uses a fixed-width compact time column (`2m`, `3h`, `7d`) and an
    aligned message preview, never internal IDs.
 3. Select a quote with `v` or `V`, then press **Enter** to write a comment.
-4. Save the comment with **Ctrl+S**. The annotated source span stays highlighted.
+4. Save the comment with **Ctrl+S**. The source span and note label stay highlighted
+   in bold yellow with dark text, distinct from your active Vim selection.
 5. Press **s** to insert without submitting, or **S** to send immediately.
    Both close the annotation pane **only after successful delivery**.
 

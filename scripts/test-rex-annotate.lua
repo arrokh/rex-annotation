@@ -244,10 +244,33 @@ test("annotated spans use exact UTF-8 byte ranges and linewise ranges include ne
     if mark[4].hl_group then spans[#spans + 1] = mark end
   end
   eq(2, #spans)
-  eq({ 0, 0, 0, 5, "Visual" }, { spans[1][2], spans[1][3], spans[1][4].end_row,
+  eq({ 0, 0, 0, 5, "RexAnnotationSpan" }, { spans[1][2], spans[1][3], spans[1][4].end_row,
     spans[1][4].end_col, spans[1][4].hl_group })
-  eq({ 1, 0, 2, 0, "Visual" }, { spans[2][2], spans[2][3], spans[2][4].end_row,
+  eq({ 1, 0, 2, 0, "RexAnnotationSpan" }, { spans[2][2], spans[2][3], spans[2][4].end_row,
     spans[2][4].end_col, spans[2][4].hl_group })
+  session:close(true)
+end)
+
+test("saved annotations use explicit yellow with dark text without changing active selection", function()
+  local view = dofile(root .. "annotate_view.lua")
+  local visual = vim.api.nvim_get_hl(0, { name = "Visual", link = false })
+  local snapshot = "highlight this quote"
+  local session = view.open(snapshot, { block_id = "yellow-test" }, {})
+  vim.fn.feedkeys("ggV" .. vim.keycode("<CR>") .. "visible note" .. vim.keycode("<C-s>"), "xt")
+  for _, name in ipairs({ "RexAnnotationSpan", "RexAnnotationNote" }) do
+    local color = vim.api.nvim_get_hl(0, { name = name, link = false })
+    eq(0xf5c542, color.bg)
+    eq(0x1b1b1b, color.fg)
+    eq(true, color.bold)
+  end
+  eq(visual, vim.api.nvim_get_hl(0, { name = "Visual", link = false }))
+  local label
+  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(session.source, session.namespace, 0, -1, { details = true })) do
+    if mark[4].virt_text then label = mark[4].virt_text[1] end
+  end
+  assert(label[1]:find("[1] visible note", 1, true))
+  eq("RexAnnotationNote", label[2])
+  eq(snapshot, table.concat(vim.api.nvim_buf_get_lines(session.source, 0, -1, false), "\n"))
   session:close(true)
 end)
 
