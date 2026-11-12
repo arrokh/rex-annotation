@@ -17,6 +17,10 @@ from typing import Any, Dict, List, Optional, Tuple
 MAX_TRANSCRIPT_BYTES = 4 * 1024 * 1024
 MAX_TRANSCRIPT_ENTRIES = 5000
 BINDING_VERSION = 1
+CODEX_ROLLOUT = re.compile(
+    r"^rollout-(\d{4})-(\d{2})-(\d{2})T\d{2}-\d{2}-\d{2}-"
+    r"([0-9a-fA-F-]{36})(?:_([0-9a-fA-F-]{36}))?\.jsonl$"
+)
 ANSI_ESCAPE = re.compile(
     r"\x1b(?:\][^\x07]*(?:\x07|\x1b\\)|\[[0-?]*[ -/]*[@-~]|[PX^_].*?\x1b\\|[@-_])"
 )
@@ -589,6 +593,73 @@ def _current_binding(pid: int, agent: str, rex_session: str, rex_block: str) -> 
     return path, record
 
 
+def _recover_codex_binding(pid: int, rex_session: str, rex_block: str) -> Tuple[Path, Dict[str, Any]]:
+    """Bind only the single rollout open by this pane's exact foreground Codex PID."""
+    import uuid
+    import native_scope
+
+    process = native_scope._run_rex_process(rex_session, rex_block)
+    if native_scope._recognized_agent(process) != "codex" or native_scope._foreground_pid(process) != pid:
+        raise ReplyError("Rex foreground Codex process changed; refusing transcript recovery")
+    info = native_scope._process_info(pid)
+    start_identity = _process_start_identity(pid)
+    if native_scope._agent_path(info.path) != "codex" or info.start_identity != start_identity:
+        raise ReplyError("foreground Codex process identity changed; refusing transcript recovery")
+
+    transcripts = native_scope._open_codex_rollouts(pid)
+    if not transcripts:
+        raise ReplyError("no Codex rollout is open by the foreground PID; start a turn and retry")
+    if len(transcripts) != 1:
+        raise ReplyError("multiple Codex rollouts are open by the foreground PID; refusing to guess")
+    transcript = Path(transcripts[0]).resolve(strict=True)
+    match = CODEX_ROLLOUT.fullmatch(transcript.name)
+    parts = transcript.parts
+    if not match or len(parts) < 5 or parts[-5] != "sessions" or tuple(parts[-4:-1]) != match.group(1, 2, 3):
+        raise ReplyError("foreground Codex has an invalid rollout path; refusing transcript recovery")
+    try:
+        conversation_id = str(uuid.UUID(match.group(4)))
+    except ValueError:
+        raise ReplyError("foreground Codex rollout has an invalid thread id")
+    _parse_transcript("codex", str(transcript), conversation_id)
+
+    if _process_start_identity(pid) != start_identity or native_scope._open_codex_rollouts(pid) != [str(transcript)]:
+        raise ReplyError("foreground Codex session changed during transcript recovery")
+    process = native_scope._run_rex_process(rex_session, rex_block)
+    if native_scope._recognized_agent(process) != "codex" or native_scope._foreground_pid(process) != pid:
+        raise ReplyError("Rex foreground Codex process changed during transcript recovery")
+    existing = None
+    try:
+        existing_path, existing = _current_binding(pid, "codex", rex_session, rex_block)
+    except ReplyError as error:
+        if not str(error).startswith("no active reply binding"):
+            raise
+    if existing is not None:
+        if existing.get("conversation_id") == conversation_id and existing.get("transcript_path") == str(transcript):
+            return existing_path, existing
+        raise ReplyError("Codex foreground thread changed without a matching lifecycle binding; refusing stale transcript")
+
+    record = register_binding("codex", pid, rex_session, rex_block, conversation_id, str(transcript))
+    binding_path = _binding_path(_state_directory(), pid, start_identity)
+    current_path, current = _current_binding(pid, "codex", rex_session, rex_block)
+    if current_path != binding_path or current != record or current.get("conversation_id") != conversation_id:
+        raise ReplyError("Codex binding changed during transcript recovery")
+    return current_path, current
+
+
+def _current_or_recover_binding(pid: int, agent: str, rex_session: str, rex_block: str) -> Tuple[Path, Dict[str, Any]]:
+    if agent != "codex":
+        return _current_binding(pid, agent, rex_session, rex_block)
+    try:
+        binding_path, record = _current_binding(pid, agent, rex_session, rex_block)
+    except ReplyError as error:
+        if not str(error).startswith("no active reply binding"):
+            raise
+    else:
+        if record.get("pending") is True and not Path(record["transcript_path"]).exists():
+            return binding_path, record
+    return _recover_codex_binding(pid, rex_session, rex_block)
+
+
 def _ensure_binding_unchanged(path: Path, pid: int, record: Dict[str, Any]) -> None:
     _validate_native_child(record)
     start_identity = _process_start_identity(pid)
@@ -673,12 +744,8 @@ def invalidate_binding(agent: str, pid: int, rex_session: str, rex_block: str) -
 def _codex_thread_id_matches(name: str, thread_id: str) -> bool:
     # Current Codex rollouts are date-partitioned JSONL files whose canonical
     # basename carries the thread id; reverted rollouts append a second UUID.
-    pattern = re.compile(
-        r"^rollout-\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}-"
-        r"([0-9a-fA-F-]{36})(?:_([0-9a-fA-F-]{36}))?\.jsonl$"
-    )
-    match = pattern.fullmatch(name)
-    return bool(match and match.group(1).lower() == thread_id.lower())
+    match = CODEX_ROLLOUT.fullmatch(name)
+    return bool(match and match.group(4).lower() == thread_id.lower())
 
 
 def find_codex_transcript(thread_id: str, codex_home: Optional[str] = None) -> str:
@@ -772,6 +839,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             print(json.dumps({"unregistered": removed}, separators=(",", ":")))
             return 0
         if args.command == "validate":
+            _current_or_recover_binding(args.pid, args.agent, args.rex_session, args.rex_block)
             record = _verified_binding(
                 args.agent,
                 args.pid,
@@ -781,7 +849,7 @@ def main(argv: Optional[List[str]] = None) -> int:
             )
             print(json.dumps({"valid": True, "sessionId": record["conversation_id"]}, separators=(",", ":")))
             return 0
-        binding_path, record = _current_binding(args.pid, args.agent, args.rex_session, args.rex_block)
+        binding_path, record = _current_or_recover_binding(args.pid, args.agent, args.rex_session, args.rex_block)
         if record.get("pending") is True and not Path(record["transcript_path"]).exists():
             replies = []  # New native sessions may not persist their file until the first turn.
         else:

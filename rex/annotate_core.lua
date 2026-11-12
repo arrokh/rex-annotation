@@ -246,7 +246,7 @@ function M.agent_request(target, original, request)
     command[#command + 1] = "--conversation"
     command[#command + 1] = request.sessionId
   end
-  local result = vim.system(command, { text = true, timeout = 6000 }):wait()
+  local result = vim.system(command, { text = true, timeout = 8000 }):wait()
   assert(result.code == 0, "Agent session unavailable; notes kept. " .. (result.stderr or result.stdout or ""))
   assert(#(result.stdout or "") <= 12 * 1024 * 1024, "Agent reply response is too large")
   local response = vim.json.decode(result.stdout)

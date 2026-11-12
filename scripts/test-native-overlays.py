@@ -33,7 +33,10 @@ int main(int argc, char **argv) {
   const char *python = getenv("REX_TEST_PYTHON");
   const char *hook = getenv("REX_TEST_HOOK");
   const char *payload = getenv("REX_TEST_PAYLOAD");
+  const char *transcript = getenv("REX_TEST_TRANSCRIPT");
   if (!python || !hook || !payload || getenv("REX_PID") || getenv("REX_ANNOTATION_ROOT")) return 6;
+  int transcript_file = transcript ? open(transcript, O_RDONLY) : -1;
+  if (transcript && transcript_file < 0) return 11;
   pid_t child = fork();
   if (child < 0) return 7;
   if (child == 0) {
@@ -48,7 +51,9 @@ int main(int argc, char **argv) {
   printf("\033[?2004hSYNTHETIC INPUT READY\r\n"); fflush(stdout);
   unsigned char value;
   while (read(0, &value, 1) == 1) { if (write(file, &value, 1) != 1) return 5; }
-  close(file); return 0;
+  close(file);
+  if (transcript_file >= 0) close(transcript_file);
+  return 0;
 }
 '''
 
@@ -144,7 +149,12 @@ def run():
                     columns, rows = (40, 20) if action == "s" else (120, 35)
                     raw = base / (launcher + action + ".bin")
                     conversation = "11111111-2222-4333-8444-555555555555"
-                    path = base / (launcher + action + ".jsonl")
+                    if agent == "codex":
+                        path = base / "codex-home/sessions/2026/11/10" / (
+                            "rollout-2026-11-10T00-00-00-" + conversation + ".jsonl")
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                    else:
+                        path = base / (launcher + action + ".jsonl")
                     quote = transcript(agent, path, conversation)
                     payload = base / (launcher + action + "-hook.json")
                     payload.write_text(json.dumps({"hook_event_name":"SessionStart", "source":"startup",
@@ -153,6 +163,8 @@ def run():
                                "REX_ANNOTATION_STATE_DIR=" + str(state), "PYTHONDONTWRITEBYTECODE=1",
                                "REX_TEST_PYTHON=" + sys.executable, "REX_TEST_HOOK=" + str(ROOT / "integrations" / agent / "hooks/register.py"),
                                "REX_TEST_PAYLOAD=" + str(payload)]
+                    if agent == "codex":
+                        command.append("REX_TEST_TRANSCRIPT=" + str(path))
                     command += ([str(base / "cux"), str(base / "claude"), str(raw)] if launcher == "cux"
                                 else [str(base / agent), str(raw)])
                     created = LIVE.rex("session.create", {"label":"rex-annotation-fake-" + launcher, "initial_windows":[{"layout":{"block":{

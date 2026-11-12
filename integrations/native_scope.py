@@ -8,6 +8,7 @@ import os
 import re
 import selectors
 import shutil
+import stat
 import subprocess
 import sys
 import time
@@ -17,8 +18,14 @@ from typing import Any, Dict, Optional
 from session_replies import ReplyError, _require_token
 
 MAX_REX_OUTPUT = 64 * 1024
+MAX_OPEN_FILES_OUTPUT = 128 * 1024
 REX_TIMEOUT_SECONDS = 1.6
+OPEN_FILES_TIMEOUT_SECONDS = 1.5
 MAX_ANCESTRY_DEPTH = 64
+CODEX_ROLLOUT = re.compile(
+    r"^rollout-(\d{4})-(\d{2})-(\d{2})T\d{2}-\d{2}-\d{2}-"
+    r"([0-9a-fA-F-]{36})(?:_([0-9a-fA-F-]{36}))?\.jsonl$"
+)
 
 ProcessInfo = namedtuple("ProcessInfo", "pid parent_pid uid start_identity path", defaults=[""])
 NativeScope = namedtuple("NativeScope", "rex_session rex_block pid native_child_pid", defaults=[None])
@@ -104,6 +111,120 @@ def _process_info(pid: int) -> ProcessInfo:
     if sys.platform == "darwin":
         return _darwin_process_info(pid)
     raise ReplyError("process ancestry is unsupported on this platform")
+
+
+def _open_codex_rollouts(pid: int):
+    """Return only canonical rollout files open by this exact Codex process."""
+    if isinstance(pid, bool) or not isinstance(pid, int) or pid <= 0:
+        raise ReplyError("Codex PID must be a positive integer")
+    process = _process_info(pid)
+    if _agent_path(process.path) != "codex":
+        raise ReplyError("foreground process is not Codex")
+    start_identity = process.start_identity
+    names = []
+
+    if sys.platform.startswith("linux"):
+        directory = "/proc/{}/fd".format(pid)
+        try:
+            descriptors = os.listdir(directory)
+        except OSError as error:
+            raise ReplyError("cannot inspect foreground Codex files: {}".format(error))
+        if len(descriptors) > 8192:
+            raise ReplyError("foreground Codex has too many open files to inspect safely")
+        for descriptor in descriptors:
+            try:
+                names.append(os.readlink(os.path.join(directory, descriptor)))
+            except FileNotFoundError:
+                continue  # The descriptor closed during enumeration.
+            except OSError as error:
+                raise ReplyError("cannot inspect foreground Codex files: {}".format(error))
+    elif sys.platform == "darwin":
+        lsof = "/usr/sbin/lsof"
+        try:
+            executable = os.lstat(lsof)
+        except OSError as error:
+            raise ReplyError("macOS lsof is unavailable: {}".format(error))
+        if (not stat.S_ISREG(executable.st_mode) or executable.st_uid != 0
+                or executable.st_mode & (stat.S_ISUID | stat.S_ISGID | 0o022)):
+            raise ReplyError("refusing an untrusted or set-ID lsof executable")
+        try:
+            process = subprocess.Popen([lsof, "-n", "-p", str(pid), "-Fn"], stdin=subprocess.DEVNULL,
+                                       stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, close_fds=True)
+        except OSError as error:
+            raise ReplyError("cannot inspect foreground Codex files: {}".format(error))
+        output = bytearray()
+        selector = selectors.DefaultSelector()
+        try:
+            if process.stdout is None:
+                raise ReplyError("lsof did not provide an output stream")
+            selector.register(process.stdout, selectors.EVENT_READ)
+            eof = False
+            deadline = time.monotonic() + OPEN_FILES_TIMEOUT_SECONDS
+            while not eof:
+                remaining = deadline - time.monotonic()
+                if remaining <= 0 or not selector.select(remaining):
+                    raise ReplyError("foreground Codex file inspection timed out")
+                chunk = os.read(process.stdout.fileno(), 8192)
+                if not chunk:
+                    eof = True
+                    break
+                output.extend(chunk)
+                if len(output) > MAX_OPEN_FILES_OUTPUT:
+                    raise ReplyError("foreground Codex file list is oversized")
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                raise ReplyError("foreground Codex file inspection timed out")
+            try:
+                code = process.wait(timeout=remaining)
+            except subprocess.TimeoutExpired:
+                raise ReplyError("foreground Codex file inspection timed out")
+        finally:
+            selector.close()
+            if process.poll() is None:
+                try:
+                    process.kill()
+                except OSError:
+                    pass
+                try:
+                    process.wait(timeout=0.2)
+                except subprocess.TimeoutExpired:
+                    pass
+            if process.stdout is not None:
+                process.stdout.close()
+        if code != 0:
+            raise ReplyError("cannot inspect foreground Codex files (lsof exit {})".format(code))
+        try:
+            names.extend(line[1:] for line in os.fsdecode(bytes(output)).splitlines() if line.startswith("n"))
+        except UnicodeError as error:
+            raise ReplyError("foreground Codex file paths are malformed: {}".format(error))
+    else:
+        raise ReplyError("open Codex transcript inspection is unsupported on this platform")
+
+    matches = set()
+    for name in names:
+        if name.endswith(" (deleted)") or not os.path.isabs(name):
+            continue
+        normalized = os.path.realpath(name)
+        parts = normalized.split(os.sep)
+        match = CODEX_ROLLOUT.fullmatch(os.path.basename(normalized))
+        if not match or len(parts) < 5 or parts[-5] != "sessions":
+            continue
+        year, month, day = match.group(1, 2, 3)
+        if tuple(parts[-4:-1]) != (year, month, day):
+            continue
+        try:
+            import uuid
+            uuid.UUID(match.group(4))
+            info = os.stat(normalized)
+        except (OSError, ValueError):
+            continue
+        if stat.S_ISREG(info.st_mode) and info.st_uid == os.geteuid():
+            matches.add(normalized)
+
+    current = _process_info(pid)
+    if current.start_identity != start_identity or _agent_path(current.path) != "codex":
+        raise ReplyError("foreground Codex process changed during file inspection")
+    return sorted(matches)
 
 
 def _is_ancestor(ancestor_pid: int, ancestor_start: str, hook_pid: int, agent: str) -> bool:

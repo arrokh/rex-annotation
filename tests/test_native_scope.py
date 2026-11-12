@@ -128,6 +128,26 @@ class NativeScopeTests(unittest.TestCase):
             self.assertFalse(native_scope._is_ancestor(42, "test:42", 999, "codex"))
             self.assertLessEqual(info.call_count, native_scope.MAX_ANCESTRY_DEPTH)
 
+    def test_open_codex_rollouts_come_from_exact_owned_process_file_descriptors(self):
+        with tempfile.TemporaryDirectory() as directory:
+            transcript = Path(directory) / "sessions/2026/01/02" / (
+                "rollout-2026-01-02T03-04-05-11111111-1111-4111-8111-111111111111.jsonl"
+            )
+            transcript.parent.mkdir(parents=True)
+            transcript.write_text("synthetic transcript")
+            child = subprocess.Popen([sys.executable, "-c", "import sys,time;f=open(sys.argv[1]);f.read();print('ready',flush=True);time.sleep(10)",
+                                      str(transcript)], stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+            try:
+                self.assertEqual(child.stdout.readline().strip(), "ready")
+                info = native_scope.ProcessInfo(child.pid, os.getpid(), os.geteuid(), "test:open-rollout", "/opt/codex")
+                with mock.patch.object(native_scope, "_process_info", return_value=info):
+                    self.assertEqual(native_scope._open_codex_rollouts(child.pid), [str(transcript.resolve())])
+            finally:
+                child.terminate()
+                child.wait(timeout=3)
+                child.stdout.close()
+                child.stderr.close()
+
     def test_real_owned_child_can_verify_its_parent_without_ps(self):
         parent = os.getpid()
         code = ("import os,sys;sys.path.insert(0,sys.argv[1]);import native_scope;"

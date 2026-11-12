@@ -78,7 +78,11 @@ After `install`, start `codex`, `claude`, or `cux`
 normally in a Rex pane. CUX counts as Claude during detection and diagnostics,
 including installations where only `cux` is on PATH. No aliases, PATH shims, or special launchers are required. The
 hooks bind the exact foreground process and hook-provided conversation; outside
-Rex they do nothing. Setup never restarts an existing native agent.
+Rex they do nothing. Codex can defer lifecycle hooks until the first prompt. If
+you annotate a resumed thread before sending a new prompt, the plugin verifies
+the one rollout file open by that exact foreground Codex PID. It fails safely if
+that file is missing or ambiguous; it never guesses the newest transcript. Setup
+never restarts an existing native agent.
 
 Codex hooks live in `$CODEX_HOME/hooks.json` (default `~/.codex/hooks.json`).
 Claude hooks live in `$CLAUDE_CONFIG_DIR/settings.json` (default
@@ -136,9 +140,9 @@ A registered Pi package with its extension disabled is not reported healthy.
 - **Pi bridge not loaded:** an existing process retains its loaded extension.
   Only reload for bridge changes after checking session-auth effects. Do not
   reload a working session just to clear an informational status check.
-- **Native reply history unavailable:** run `rex-annotation install`,
-  then start a new normal `codex`, `claude`, or `cux` process inside
-  Rex. Match any `CODEX_HOME`/`CLAUDE_CONFIG_DIR` override used at setup; see the
-  [integration guide](../integrations/README.md).
+- **Native reply history unavailable:** run `rex-annotation install` with the
+  same `CODEX_HOME`/`CLAUDE_CONFIG_DIR` overrides used by the agent. For Codex,
+  send its first prompt if no saved rollout is open in the foreground process.
+  See the [integration guide](../integrations/README.md).
 - **Delivery timeout:** inspect the original draft before retrying. The operation
   may already have happened; the plugin never retries it automatically.
