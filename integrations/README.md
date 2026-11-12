@@ -136,10 +136,20 @@ so a delayed old SessionEnd cannot remove a newer session's binding.
   `output_text`/`refusal` on visible channels. Hidden analysis/thinking, tools,
   user messages, images, sidechains, summaries and unknown channels are excluded.
   Empty replies are skipped; terminal escapes are stripped.
-- Ambiguous Claude parent graphs, multiple Codex rollback/fork files, and Codex
-  rollouts with a `thread_rolled_back` event fail closed; undone replies are not
-  exported as current history. These adapters do not claim Pi's in-memory active-branch API. Native
-  transcript formats are local implementation details and may require updates.
+- Claude streams one assistant record per content block. Parallel tool results
+  can point to their own tool-call records, so sibling UUID links alone are not
+  a conversation fork. The adapter checks shared API response IDs, exact
+  tool-use/result IDs, writer identity, and parent links before validating one
+  logical conversation chain. Mixed tool-result/context records validate every
+  result ID too. Progress, attachments, and explicit compaction links preserve
+  graph continuity without exporting their content. Opaque metadata leaves alone
+  are not conversation forks. Genuine forks, duplicate or
+  unresolved identities, and cycles still fail closed; no newest-leaf or
+  timestamp guess is used.
+- Multiple Codex rollback/fork files and rollouts with a `thread_rolled_back`
+  event fail closed; undone replies are not exported as current history. These
+  adapters do not claim Pi's in-memory active-branch API. Native transcript
+  formats are local implementation details and may require updates.
 - Claude transcripts can lag its in-memory conversation. A reply not yet flushed
   to disk may not appear until a later read. Hooks do not copy Stop's response
   text to work around that lag.
@@ -162,13 +172,17 @@ primary docs, and native rollout schemas:
 - [Claude hooks](https://code.claude.com/docs/en/hooks.md)
 - [Claude plugin layout](https://code.claude.com/docs/en/plugins/create.md)
 - [Claude session management](https://code.claude.com/docs/en/sessions.md)
+- [Anthropic SDK transcript reconstruction and parallel-tool handling](https://github.com/anthropics/claude-agent-sdk-python/blob/main/src/claude_agent_sdk/_internal/sessions.py)
 
 `npm test` runs synthetic adapter/hook/skill/lifecycle tests. Optional
 `python3 scripts/test-native-overlays.py` compiles two tiny fake executables and
 runs Codex/Claude automatic hook binding → picker → Enter comment → s/S flows in
 disposable Rex sessions without `REX_PID`, `REX_ANNOTATION_ROOT`, or wrappers.
 It verifies exact UTF-8 paste, no Return for s, exactly one Return for S,
-auto-close, source focus, and owned-session cleanup. It never invokes a real
+auto-close, source focus, and owned-session cleanup. Claude/CUX fixtures include
+streamed parallel tools, mixed tool-result/context records, and opaque progress
+links, not only a linear chat.
+`--agent claude` or `--agent cux` runs a focused check. It never invokes a real
 coding agent or sends a model request.
 
 `python3 scripts/test-native-startup.py --agent claude` checks real Claude
