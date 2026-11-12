@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.1.7
+
+- Recover Codex's deferred startup binding from the single rollout open by the exact Rex foreground PID, so resumed sessions work before a new prompt.
+- Reject missing, ambiguous, replaced, or non-foreground rollout files; never choose by recency.
+- Add no-input native startup coverage for Codex's deferred lifecycle hooks.
+
 ## 0.1.6
 
 - Make plain installation detect and configure Pi, Codex, and Claude/CUX automatically, with no extra setup flags.

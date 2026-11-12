@@ -32,7 +32,7 @@ local system = vim.system
 local observed
 vim.system = function(command, options)
   observed = command
-  assert(options.timeout == 6000)
+  assert(options.timeout == 8000)
   return { wait = function() return { code = 0, stdout = '{"sessionId":"conversation","replies":[]}' } end }
 end
 local response = core.agent_request(target, original, { op = "validate", sessionId = "conversation" })

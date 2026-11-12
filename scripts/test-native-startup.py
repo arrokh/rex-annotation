@@ -14,13 +14,13 @@ import uuid
 from urllib.parse import unquote, urlsplit
 
 sys.dont_write_bytecode = True
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(os.environ.get("REX_ANNOTATION_ROOT", Path(__file__).resolve().parent.parent)).resolve()
 SPEC = importlib.util.spec_from_file_location("native_live", ROOT / "scripts/test-rex-annotate-live.py")
 LIVE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(LIVE)
 
 
-def run(agents, launcher=False):
+def run(agents, launcher=False, fresh_codex=False, send_fixture_input=True):
     sessions, results = [], []
     connection = subprocess.run([shutil.which("rex"), "--autostart=false", "whoami", "--json"],
                                 capture_output=True, text=True, check=True, timeout=5)
@@ -56,25 +56,27 @@ def run(agents, launcher=False):
                         '[features]\ndaemon_auto_start=false\n'
                         '[model_providers.fixture]\nname="fixture"\nbase_url="http://127.0.0.1:9/v1"\nenv_key="REX_TEST_KEY"\nwire_api="responses"\n')
                     environment += ["CODEX_HOME=" + str(config), "REX_TEST_KEY=fixture-not-a-real-key"]
-                    # A blank CLI may create its thread lazily. Resume only owned
-                    # synthetic persisted history to exercise lifecycle binding.
-                    # Deferred hooks receive only offline fixture input below.
+                    # Resume synthetic history to test the resume lifecycle event,
+                    # unless --fresh-codex requests the exact new-session startup path.
                     resume_id = str(uuid.uuid4())
                     history = config / "sessions/2026/01/02" / ("rollout-2026-01-02T03-04-05-" + resume_id + ".jsonl")
-                    history.parent.mkdir(parents=True)
-                    entries = [
-                        {"timestamp": "2026-01-02T03:04:05.000Z", "type": "session_meta", "payload": {
-                            "id": resume_id, "timestamp": "2026-01-02T03:04:05.000Z", "cwd": str(home),
-                            "originator": "codex_cli_rs", "cli_version": "0.167.1", "source": "cli",
-                            "model_provider": "fixture", "base_instructions": {"text": "Synthetic startup fixture."}}},
-                        {"timestamp": "2026-01-02T03:04:06.000Z", "type": "response_item", "payload": {
-                            "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Synthetic history only."}]}},
-                        {"timestamp": "2026-01-02T03:04:07.000Z", "type": "response_item", "payload": {
-                            "type": "message", "role": "assistant", "phase": "final_answer",
-                            "content": [{"type": "output_text", "text": "Synthetic saved answer."}]}},
-                    ]
-                    history.write_text("".join(json.dumps(entry) + "\n" for entry in entries))
-                    options = ["--no-alt-screen", "-C", str(home), "resume", resume_id]
+                    if not fresh_codex:
+                        history.parent.mkdir(parents=True)
+                        entries = [
+                            {"timestamp": "2026-01-02T03:04:05.000Z", "type": "session_meta", "payload": {
+                                "id": resume_id, "timestamp": "2026-01-02T03:04:05.000Z", "cwd": str(home),
+                                "originator": "codex_cli_rs", "cli_version": "0.167.1", "source": "cli",
+                                "model_provider": "fixture", "base_instructions": {"text": "Synthetic startup fixture."}}},
+                            {"timestamp": "2026-01-02T03:04:06.000Z", "type": "response_item", "payload": {
+                                "type": "message", "role": "user", "content": [{"type": "input_text", "text": "Synthetic history only."}]}},
+                            {"timestamp": "2026-01-02T03:04:07.000Z", "type": "response_item", "payload": {
+                                "type": "message", "role": "assistant", "phase": "final_answer",
+                                "content": [{"type": "output_text", "text": "Synthetic saved answer."}]}},
+                        ]
+                        history.write_text("".join(json.dumps(entry) + "\n" for entry in entries))
+                        options = ["--no-alt-screen", "-C", str(home), "resume", resume_id]
+                    else:
+                        options = ["--no-alt-screen", "-C", str(home)]
                 setup_environment = {key:value for key,value in (entry.split("=", 1) for entry in environment)}
                 # Shadow Rex only for setup. An unavailable REX_SERVER may fall
                 # back to the user's live server, so it is not an isolation boundary.
@@ -104,13 +106,18 @@ def run(agents, launcher=False):
                 block = created["initial_windows"][0]["block_ids"][0]
                 print("OWNED",agent,session,block,flush=True)
                 deadline, screen, record = time.monotonic() + 20, "", None
-                fixture_input_at, fixture_submitted = None, False
+                fixture_input_at, fixture_submitted, idle_since = None, False, None
                 while time.monotonic() < deadline:
                     screen = LIVE.terminal(session,block,"format",{"format":"text","unwrap":True})["content"]
                     # Codex can defer lifecycle hooks until first input. This is
                     # task-only synthetic data for an unreachable fixture model:
                     # all networking is denied and no real credential is present.
-                    if agent == "codex" and not fixture_submitted:
+                    if agent == "codex" and not send_fixture_input and "Ask Codex to do anything" in screen:
+                        if idle_since is None:
+                            idle_since = time.monotonic()
+                        elif time.monotonic() - idle_since >= 2:
+                            break  # Check deferred startup before any user input.
+                    if agent == "codex" and send_fixture_input and not fixture_submitted:
                         if fixture_input_at is None and "Ask Codex to do anything" in screen:
                             LIVE.terminal(session, block, "write", {"data": "Offline Rex hook fixture"})
                             fixture_input_at = time.monotonic()
@@ -127,6 +134,22 @@ def run(agents, launcher=False):
                         record = json.loads(files[0].read_text())
                         break
                     time.sleep(0.1)  # Bounded startup readiness only; no recurring monitor.
+                startup_recovered = False
+                if not record and agent == "codex" and not send_fixture_input:
+                    pid = LIVE.terminal(session,block,"process")["foreground"]["pid"]
+                    recovered = subprocess.run(
+                        [sys.executable, str(ROOT / "integrations/session_replies.py"), "replies",
+                         "--agent", "codex", "--pid", str(pid), "--session", session, "--block", block],
+                        env={**os.environ, "CODEX_HOME":str(config), "REX_ANNOTATION_STATE_DIR":str(state),
+                             "PYTHONDONTWRITEBYTECODE":"1"}, capture_output=True, text=True, timeout=6)
+                    assert recovered.returncode == 0, recovered.stderr
+                    snapshot = json.loads(recovered.stdout)
+                    assert snapshot["replies"] and snapshot["replies"][0]["text"] == "Synthetic saved answer."
+                    files = list((state / "rex-annotation/reply-bindings").glob("*.json"))
+                    assert len(files) == 1
+                    record = json.loads(files[0].read_text())
+                    startup_recovered = True
+                    print("PASS Codex deferred-start recovery used the exact open transcript without sending a prompt", flush=True)
                 if record:
                     pid = LIVE.terminal(session,block,"process")["foreground"]["pid"]
                     assert record["pid"] == pid and record["rex_session"] == session and record["rex_block"] == block, record
@@ -152,7 +175,10 @@ def run(agents, launcher=False):
                     assert validated.returncode == 0, validated.stderr
                     result = {"agent":agent,"status":"verified","launch":"launcher" if launcher else "plain-command",
                               "pid":pid,"binding":"exact native lifecycle transcript", "synthetic_transcript_seeded":seeded,
-                              "synthetic_resume":agent == "codex", "offline_fixture_input":fixture_submitted}
+                              "synthetic_resume":agent == "codex" and not fresh_codex,
+                              "fresh_startup":agent == "codex" and fresh_codex,
+                              "startup_recovered_from_open_transcript":startup_recovered,
+                              "offline_fixture_input":fixture_submitted}
                 elif "Hooks need review" in screen:
                     raise AssertionError("Automatic Codex setup left hook definitions untrusted:\n" + screen[-2000:])
                 else:
@@ -175,5 +201,11 @@ if __name__=="__main__":
     parser=argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--agent",choices=("claude","codex"))
     parser.add_argument("--launcher", action="store_true", help="check the optional explicit launcher instead of the normal CLI")
+    parser.add_argument("--fresh-codex", action="store_true", help="test a plain Codex startup instead of resuming synthetic history")
+    parser.add_argument("--no-fixture-input", action="store_true", help="do not submit offline input; isolate SessionStart binding")
     args=parser.parse_args()
-    raise SystemExit(run([args.agent] if args.agent else ["claude","codex"], args.launcher))
+    if args.fresh_codex and args.agent != "codex":
+        parser.error("--fresh-codex requires --agent codex")
+    if args.no_fixture_input and args.fresh_codex:
+        parser.error("--no-fixture-input requires a Codex resume with persisted synthetic history")
+    raise SystemExit(run([args.agent] if args.agent else ["claude","codex"], args.launcher, args.fresh_codex, not args.no_fixture_input))

@@ -29,8 +29,13 @@ no hook-trust bypass flag or guessed approval hash is used.
 
 The trusted hooks register the exact hook-provided `session_id` and
 `transcript_path` at SessionStart and UserPromptSubmit, refresh at Stop, and
-remove the matching registration at SessionEnd. A new session invalidates its
-old binding even if the new session has no persistent transcript.
+remove the matching registration at SessionEnd. Codex may defer those events
+until the first prompt. Before that prompt, Rex Annotation can recover a missing
+binding only when the exact foreground Codex PID has exactly one canonical
+rollout file open. It verifies the thread ID and transcript contents before
+recording metadata. Missing or multiple candidates fail closed; it never scans
+for or selects the newest rollout. A new session invalidates its old binding
+even if the new session has no persistent transcript.
 
 The installed `$rex-annotation` skill is an executable fallback. It uses
 `CODEX_THREAD_ID` from Codex's tool shell and matches only canonical rollout
@@ -176,10 +181,10 @@ Read operations return no replies until persistence; delivery still requires an
 actual matching transcript. macOS process identity uses libproc with owner/PID
 and microsecond-start checks, not setuid `ps`.
 
-The equivalent Codex check verifies automatic installer trust followed by ordinary
-native binding, with no manual approval or bypass. Codex can defer lifecycle hooks
-until first input. Its smoke resumes synthetic owned history and submits only an
-offline fixture input to an unreachable fixture model, with all networking denied
-and no real credentials. It cannot send a real model request. An unexpected
-hook-review screen fails the smoke test. Temporary Rex sessions/homes are deleted
-on both success and failure.
+The equivalent Codex check verifies automatic installer trust and ordinary
+native binding, including a resumed synthetic session that is recovered before
+any new prompt. A separate fresh-start path submits only offline fixture input
+to an unreachable fixture model, with all networking denied and no real
+credentials. Neither path can send a real model request. An unexpected
+hook-review screen fails the smoke test. Temporary Rex sessions/homes are
+deleted on both success and failure.

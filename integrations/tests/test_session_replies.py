@@ -14,6 +14,7 @@ from unittest import mock
 INTEGRATIONS = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(INTEGRATIONS))
 import session_replies as replies  # noqa: E402
+import native_scope  # noqa: E402
 
 FIXTURES = Path(__file__).parent / "fixtures"
 CODEX_ID = "11111111-1111-4111-8111-111111111111"
@@ -76,7 +77,12 @@ class SessionRepliesTests(unittest.TestCase):
         self.assertNotIn("\\u001b", json.dumps(result))
 
     def test_cli_shape_and_binding_permissions(self):
-        path = self.transcript_copy("codex_session.jsonl")
+        home = Path(self.temporary.name) / "codex-home"
+        directory = home / "sessions/2026/01/02"
+        directory.mkdir(parents=True)
+        path = directory / ("rollout-2026-01-02T03-04-05-" + CODEX_ID + ".jsonl")
+        path.write_text((FIXTURES / "codex_session.jsonl").read_text(encoding="utf-8"), encoding="utf-8")
+        path = str(path)
         record = self.register(path=path)
         directory = Path(record["transcript_path"])
         binding_dir = self.state_home / "rex-annotation" / "reply-bindings"
@@ -87,21 +93,27 @@ class SessionRepliesTests(unittest.TestCase):
         self.assertNotIn("First answer", metadata)
         self.assertEqual(directory, Path(path).resolve())
 
-        status, stdout, stderr = self.run_cli([
-            "replies", "--agent", "codex", "--pid", str(os.getpid()),
-            "--session", "rex-session", "--block", "b1",
-        ])
-        self.assertEqual((status, stderr), (0, ""))
-        result = json.loads(stdout)
-        self.assertEqual(result["sessionId"], CODEX_ID)
-        self.assertEqual(result["replies"][0]["text"], "First answer.")
+        process = {"foreground":{"pid":os.getpid(),"path":"/opt/homebrew/bin/codex"}}
+        process_info = native_scope.ProcessInfo(os.getpid(), 1, os.geteuid(),
+                                                replies._process_start_identity(os.getpid()), "/opt/homebrew/bin/codex")
+        with mock.patch.object(native_scope, "_run_rex_process", return_value=process), \
+             mock.patch.object(native_scope, "_process_info", return_value=process_info), \
+             mock.patch.object(native_scope, "_open_codex_rollouts", return_value=[str(Path(path).resolve())]):
+            status, stdout, stderr = self.run_cli([
+                "replies", "--agent", "codex", "--pid", str(os.getpid()),
+                "--session", "rex-session", "--block", "b1",
+            ])
+            self.assertEqual((status, stderr), (0, ""))
+            result = json.loads(stdout)
+            self.assertEqual(result["sessionId"], CODEX_ID)
+            self.assertEqual(result["replies"][0]["text"], "First answer.")
 
-        status, stdout, stderr = self.run_cli([
-            "validate", "--agent", "codex", "--pid", str(os.getpid()),
-            "--session", "rex-session", "--block", "b1", "--conversation", CODEX_ID,
-        ])
-        self.assertEqual((status, stderr), (0, ""))
-        self.assertEqual(json.loads(stdout), {"valid": True, "sessionId": CODEX_ID})
+            status, stdout, stderr = self.run_cli([
+                "validate", "--agent", "codex", "--pid", str(os.getpid()),
+                "--session", "rex-session", "--block", "b1", "--conversation", CODEX_ID,
+            ])
+            self.assertEqual((status, stderr), (0, ""))
+            self.assertEqual(json.loads(stdout), {"valid": True, "sessionId": CODEX_ID})
 
     def test_binding_mismatch_and_changed_native_session_fail(self):
         path = self.transcript_copy("codex_session.jsonl")
