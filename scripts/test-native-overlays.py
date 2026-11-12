@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Opt-in native reply picker/insert/Send E2E using fake executables, never real agents."""
+import argparse
 import importlib.util
 import json
 import os
@@ -11,7 +12,7 @@ import tempfile
 import time
 
 sys.dont_write_bytecode = True
-ROOT = Path(__file__).resolve().parent.parent
+ROOT = Path(os.environ.get("REX_ANNOTATION_ROOT", Path(__file__).resolve().parent.parent)).resolve()
 SPEC = importlib.util.spec_from_file_location("annotation_live", ROOT / "scripts/test-rex-annotate-live.py")
 LIVE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(LIVE)
@@ -121,14 +122,30 @@ def transcript(agent, path, conversation):
         rows = [
             {"type":"user", "uuid":"u1", "parentUuid":None, "sessionId":conversation, "timestamp":older, "message":{"role":"user", "content":"USER PRIVATE"}},
             {"type":"assistant", "uuid":"a1", "parentUuid":"u1", "sessionId":conversation, "timestamp":older, "message":{"role":"assistant", "content":[{"type":"text", "text":"OLDER reply"}]}},
-            {"type":"user", "uuid":"u2", "parentUuid":"a1", "sessionId":conversation, "timestamp":latest, "message":{"role":"user", "content":"another"}},
-            {"type":"assistant", "uuid":"a2", "parentUuid":"u2", "sessionId":conversation, "timestamp":latest, "message":{"role":"assistant", "content":[{"type":"thinking", "thinking":"HIDDEN THOUGHT"}, {"type":"text", "text":text}]}},
+            # Real Claude streams parallel calls as separate records with one API
+            # response id. Tool results point at their own calls, creating normal
+            # sibling edges that must not be confused with a conversation rewind.
+            {"type":"assistant", "uuid":"call1", "parentUuid":"a1", "sessionId":conversation, "timestamp":older, "apiBlockIndex":0,
+             "message":{"id":"parallel-response", "role":"assistant", "content":[{"type":"tool_use", "id":"tool1", "name":"Read", "input":{}}]}},
+            {"type":"assistant", "uuid":"call2", "parentUuid":"call1", "sessionId":conversation, "timestamp":older, "apiBlockIndex":1,
+             "message":{"id":"parallel-response", "role":"assistant", "content":[{"type":"tool_use", "id":"tool2", "name":"Read", "input":{}}]}},
+            {"type":"user", "uuid":"result1", "parentUuid":"call1", "sessionId":conversation, "timestamp":older,
+             "message":{"role":"user", "content":[{"type":"tool_result", "tool_use_id":"tool1", "content":"HIDDEN TOOL RESULT"}, {"type":"text", "text":"HIDDEN TOOL CONTEXT"}]}},
+            {"type":"user", "uuid":"result2", "parentUuid":"call2", "sessionId":conversation, "timestamp":older,
+             "message":{"role":"user", "content":[{"type":"tool_result", "tool_use_id":"tool2", "content":"HIDDEN TOOL RESULT"}]}},
+            {"type":"assistant", "uuid":"call3", "parentUuid":"result1", "sessionId":conversation, "timestamp":older, "apiBlockIndex":2,
+             "message":{"id":"parallel-response", "role":"assistant", "content":[{"type":"tool_use", "id":"tool3", "name":"Read", "input":{}}]}},
+            {"type":"user", "uuid":"result3", "parentUuid":"call3", "sessionId":conversation, "timestamp":older,
+             "message":{"role":"user", "content":[{"type":"tool_result", "tool_use_id":"tool3", "content":"HIDDEN TOOL RESULT"}]}},
+            {"type":"user", "uuid":"u2", "parentUuid":"result3", "sessionId":conversation, "timestamp":latest, "message":{"role":"user", "content":"another"}},
+            {"type":"progress", "uuid":"progress", "parentUuid":"u2", "sessionId":conversation, "timestamp":latest, "data":{"text":"HIDDEN PROGRESS"}},
+            {"type":"assistant", "uuid":"a2", "parentUuid":"progress", "sessionId":conversation, "timestamp":latest, "message":{"role":"assistant", "content":[{"type":"thinking", "thinking":"HIDDEN THOUGHT"}, {"type":"text", "text":text}]}},
         ]
     path.write_text("".join(json.dumps(row, ensure_ascii=False) + "\n" for row in rows))
     return text
 
 
-def run():
+def run(selected=None):
     sessions = []
     with tempfile.TemporaryDirectory(prefix="rex-native-overlay-") as directory:
         base = Path(directory)
@@ -145,6 +162,8 @@ def run():
         state.mkdir(mode=0o700)
         try:
             for launcher, agent in (("codex", "codex"), ("claude", "claude"), ("cux", "claude")):
+                if selected is not None and launcher != selected:
+                    continue
                 for action in ("s", "S"):
                     columns, rows = (40, 20) if action == "s" else (120, 35)
                     raw = base / (launcher + action + ".bin")
@@ -217,7 +236,7 @@ def run():
                     assert (actual_size["columns"], actual_size["rows"]) == (columns, rows), actual_size
                     heading = "Codex REPLIES" if agent == "codex" else "Claude Code REPLIES"
                     screen = LIVE.wait_for(session, overlay, lambda s: heading in s and "LATEST native reply" in s)
-                    assert screen.count(heading) == 1 and "HIDDEN THOUGHT" not in screen and "USER PRIVATE" not in screen, screen
+                    assert screen.count(heading) == 1 and "HIDDEN THOUGHT" not in screen and "USER PRIVATE" not in screen and "HIDDEN TOOL RESULT" not in screen and "HIDDEN TOOL CONTEXT" not in screen and "HIDDEN PROGRESS" not in screen, screen
                     assert "private-id" not in screen and "2026-11-10T" not in screen, screen
                     LIVE.terminal(session, overlay, "write", {"data":"\r"})
                     detail = LIVE.wait_for(session, overlay, lambda s: "REPLY" in s and quote in s and "OLDER reply" not in s)
@@ -261,4 +280,6 @@ def run():
 
 
 if __name__ == "__main__":
-    run()
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--agent", choices=("codex", "claude", "cux"), help="check only this launcher")
+    run(parser.parse_args().agent)

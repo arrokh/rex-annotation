@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.1.8
+
+- Fix Claude/CUX reply loading after parallel tool calls: distinguish streamed response blocks and matched tool results from genuine conversation forks.
+- Validate logical graph continuity through progress, attachments and explicit compaction links; keep genuine forks, malformed identities and cycles fail-closed.
+- Validate all tool-result IDs in mixed text/image context records, including parallel tool results, without exporting private context.
+- Add regressions based on the actual failing graph shape and cover it in Claude/CUX picker, insert and Send smoke tests.
+
 ## 0.1.7
 
 - Recover Codex's deferred startup binding from the single rollout open by the exact Rex foreground PID, so resumed sessions work before a new prompt.

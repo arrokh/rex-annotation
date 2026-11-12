@@ -331,50 +331,198 @@ def _claude_session_matches(entries: List[Dict[str, Any]], path: Path, conversat
         raise ReplyError("empty Claude transcript path does not identify the bound session")
 
 
+def _claude_main_entry(entry: Dict[str, Any]) -> bool:
+    return not entry.get("isSidechain") and not entry.get("teamName")
+
+
+def _validate_claude_graph(entries: List[Dict[str, Any]]) -> None:
+    """Prove a single conversation, allowing typed parallel-tool fan-out only.
+
+    Claude streams one assistant record per content block with the same API
+    message.id. Each tool_result can point to its own call instead of the last
+    streamed block. Collapse these explicitly identified response members before
+    checking for forks; never pick a leaf by file order or timestamp.
+    """
+    nodes = {}
+    conversation_writers = set()
+    for entry in entries:
+        kind = entry.get("type")
+        if not _claude_main_entry(entry) or kind not in ("assistant", "user", "summary", "system", "attachment", "progress"):
+            continue
+        if kind in ("system", "attachment", "progress") and "uuid" not in entry:
+            continue  # Non-chain metadata carries no conversation identity.
+        uid = _require_token(entry.get("uuid"), "Claude message id", 512)
+        if uid in nodes:
+            raise ReplyError("Claude transcript repeats a message id")
+        if "parentUuid" not in entry:
+            raise ReplyError("Claude transcript has no parent link; refusing to guess its branch")
+        nodes[uid] = entry
+        if kind in ("assistant", "user"):
+            agent_id = entry.get("agentId")
+            if agent_id is not None:
+                agent_id = _require_token(agent_id, "Claude writer id", 512)
+            conversation_writers.add(agent_id)
+    if len(conversation_writers) > 1:
+        raise ReplyError("Claude transcript contains different conversation writers")
+
+    parents = {}
+    for uid, entry in nodes.items():
+        parent = entry["parentUuid"]
+        # The explicit logical link joins archived history across compaction.
+        # Summary text is never exported; this does not infer an active leaf.
+        if parent is None and entry.get("type") == "system" and entry.get("subtype") == "compact_boundary":
+            parent = entry.get("logicalParentUuid")
+        if parent is not None:
+            parent = _require_token(parent, "Claude parent message id", 512)
+            if parent not in nodes:
+                raise ReplyError("Claude transcript has an unresolved parent link")
+        parents[uid] = parent
+
+    checked = set()
+    for uid in nodes:
+        path = set()
+        current = uid
+        while current is not None and current not in checked:
+            if current in path:
+                raise ReplyError("Claude transcript has a parent cycle")
+            path.add(current)
+            current = parents[current]
+        checked.update(path)
+
+    # Opaque records can carry chain links or be unrelated progress/status
+    # leaves. Follow their explicit parents to the nearest conversation record;
+    # their presence alone must neither create nor hide a conversational fork.
+    conversation = {uid: entry for uid, entry in nodes.items() if entry.get("type") in ("assistant", "user", "summary")}
+    resolved = {}
+
+    def conversation_parent(uid):
+        trail = []
+        while uid is not None and uid not in conversation and uid not in resolved:
+            trail.append(uid)
+            uid = parents[uid]
+        ancestor = resolved.get(uid, uid)
+        for opaque in trail:
+            resolved[opaque] = ancestor
+        return ancestor
+
+    conversation_parents = {uid: conversation_parent(parents[uid]) for uid in conversation}
+    nodes, parents = conversation, conversation_parents
+    groups = {uid: ("entry", uid) for uid in nodes}
+    response_writers = {}
+    block_indices = {}
+    tool_owners = {}
+
+    def writer(entry):
+        return (entry.get("agentId"), entry.get("teamName"))
+
+    for uid, entry in nodes.items():
+        if entry.get("type") != "assistant":
+            continue
+        message = entry.get("message")
+        if not isinstance(message, dict) or message.get("role") != "assistant":
+            raise ReplyError("Claude assistant transcript entry is malformed")
+        response = message.get("id")
+        if response is not None:
+            response = _require_token(response, "Claude API response id", 512)
+            group = ("response", response)
+            if group in response_writers and response_writers[group] != writer(entry):
+                raise ReplyError("Claude response fragments have different writers")
+            response_writers[group] = writer(entry)
+            groups[uid] = group
+            if "apiBlockIndex" in entry:
+                index = entry["apiBlockIndex"]
+                if isinstance(index, bool) or not isinstance(index, int) or index < 0:
+                    raise ReplyError("Claude response block index is malformed")
+                indices = block_indices.setdefault(group, set())
+                if index in indices:
+                    raise ReplyError("Claude transcript repeats a response block index")
+                indices.add(index)
+        content = message.get("content")
+        for block in content if isinstance(content, list) else []:
+            if not isinstance(block, dict) or block.get("type") != "tool_use" or block.get("id") is None:
+                continue
+            call = _require_token(block["id"], "Claude tool call id", 512)
+            if call in tool_owners:
+                raise ReplyError("Claude transcript repeats a tool call id")
+            tool_owners[call] = uid
+
+    results = {}
+    answered = set()
+    for uid, entry in nodes.items():
+        message = entry.get("message")
+        content = message.get("content") if isinstance(message, dict) else None
+        if entry.get("type") != "user" or not isinstance(content, list) or not content:
+            continue
+        tool_results = [block for block in content if isinstance(block, dict) and block.get("type") == "tool_result"]
+        if not tool_results:
+            continue
+        owners = set()
+        for block in tool_results:
+            call = _require_token(block.get("tool_use_id"), "Claude tool result id", 512)
+            owner = tool_owners.get(call)
+            if owner is None or writer(entry) != writer(nodes[owner]) or message.get("role") != "user":
+                raise ReplyError("Claude tool result has no matching response")
+            if call in answered:
+                raise ReplyError("Claude transcript repeats a tool result")
+            answered.add(call)
+            owners.add(groups[owner])
+        if len(owners) != 1:
+            raise ReplyError("Claude tool result spans different responses")
+        response_group = owners.pop()
+        results[uid] = response_group
+        # Native tool-result messages can also contain text/image context.
+        # Their matched call IDs establish provenance, not block purity. A user
+        # message with no tool results remains a separate conversation node.
+        groups[uid] = response_group
+    for uid, response_group in results.items():
+        parent = parents[uid]
+        # tool_use_id identifies the call; parentUuid is a conversation edge and
+        # may name another fragment/result of that SAME response (including a
+        # result containing multiple calls). Never attach across responses.
+        if parent is None or groups[parent] != response_group:
+            raise ReplyError("Claude tool result does not match its parent response")
+
+    # A shared API id alone cannot combine two independently rooted responses.
+    heads = {}
+    for uid, entry in nodes.items():
+        group, parent = groups[uid], parents[uid]
+        if entry.get("type") == "assistant" and (parent is None or groups[parent] != group):
+            heads[group] = heads.get(group, 0) + 1
+            if heads[group] > 1:
+                raise ReplyError("Claude transcript has an ambiguous active branch")
+
+    children, incoming = {}, {}
+    for uid, parent in parents.items():
+        group = groups[uid]
+        if parent is None or groups[parent] == group:
+            continue
+        parent_group = groups[parent]
+        children.setdefault(parent_group, set()).add(group)
+        incoming.setdefault(group, set()).add(parent_group)
+        if len(children[parent_group]) > 1 or len(incoming[group]) > 1:
+            raise ReplyError("Claude transcript has an ambiguous active branch")
+    all_groups = set(groups.values())
+    roots = all_groups - set(incoming)
+    if all_groups and len(roots) != 1:
+        raise ReplyError("Claude transcript has an ambiguous active branch")
+    reached = set()
+    current = next(iter(roots), None)
+    while current is not None and current not in reached:
+        reached.add(current)
+        current = next(iter(children.get(current, ())), None)
+    if reached != all_groups:
+        raise ReplyError("Claude transcript has a disconnected or cyclic conversation")
+
+
 def _claude_replies(path: Path, conversation_id: str, data: bytes) -> List[Dict[str, str]]:
     entries = _jsonl_entries(data)
     _claude_session_matches(entries, path, conversation_id)
-
-    # Claude records parent/child message ids. A transcript with multiple children
-    # for one parent does not identify which branch is active, so fail closed.
-    children: Dict[str, set] = {}
-    seen_message_ids = set()
-    known_ids = {
-        entry["uuid"]
-        for entry in entries
-        if isinstance(entry.get("uuid"), str) and entry.get("type") != "progress"
-    }
-    roots = set()
-    for entry in entries:
-        if entry.get("type") not in ("assistant", "user", "summary") or entry.get("isSidechain"):
-            continue
-        message_id = entry.get("uuid")
-        if not isinstance(message_id, str):
-            raise ReplyError("Claude conversation entry has no message id")
-        message_id = _require_token(message_id, "Claude message id", 512)
-        if message_id in seen_message_ids:
-            raise ReplyError("Claude transcript repeats a message id")
-        seen_message_ids.add(message_id)
-        if "parentUuid" not in entry:
-            raise ReplyError("Claude transcript has no parent link; refusing to guess its branch")
-        parent_id = entry.get("parentUuid")
-        if parent_id is None:
-            if entry.get("type") in ("assistant", "user"):
-                roots.add(message_id)
-        else:
-            parent_id = _require_token(parent_id, "Claude parent message id", 512)
-            if parent_id not in known_ids:
-                raise ReplyError("Claude transcript has an unresolved parent link")
-            children.setdefault(parent_id, set()).add(message_id)
-            if len(children[parent_id]) > 1:
-                raise ReplyError("Claude transcript has an ambiguous active branch")
-    if len(roots) > 1:
-        raise ReplyError("Claude transcript has an ambiguous active branch")
+    _validate_claude_graph(entries)
 
     replies_with_order = []
     used_ids = set()
     for order, entry in enumerate(entries):
-        if entry.get("type") != "assistant" or entry.get("isSidechain"):
+        if entry.get("type") != "assistant" or not _claude_main_entry(entry):
             continue
         message = entry.get("message")
         if not isinstance(message, dict):
