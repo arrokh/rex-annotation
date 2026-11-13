@@ -99,5 +99,16 @@ tap. Keep `dist/homebrew` while using that development formula. The helper refus
 to overwrite an unowned tap/formula. `--prepare-only` generates files without
 changing Homebrew.
 
+## Formula-only revisions
+
+For a formula-only fix, increment its Homebrew `revision` while keeping the
+published version, URL, and checksum unchanged. Do not replace the release
+archive. New-version formulas normally start without a revision.
+
+The formula keeps README, changelog, and license copies at both the Cellar
+prefix and the `libexec` documentation root. This prevents Homebrew's metadata
+relocation from breaking relative documentation links. `brew test` also runs
+the installed documentation-navigation checks.
+
 **Next:** [Setup and diagnostics](setup.md) · [Use the plugin](usage.md) ·
 [Release process](development.md#release-process) · [Uninstall](setup.md#uninstall)
