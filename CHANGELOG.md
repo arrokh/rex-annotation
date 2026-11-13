@@ -1,5 +1,12 @@
 # Changelog
 
+[Project README](README.md) · [Documentation](docs/README.md)
+
+## 0.1.9
+
+- Reorganize the README and guides around setup, use, troubleshooting, and development; add a documentation index, per-agent navigation, and references to Herdr Annotate, Plannotator, and Plannotator TUI.
+- Check documentation links, heading targets, and routes back to the index with offline tests.
+
 ## 0.1.8
 
 - Fix Claude/CUX reply loading after parallel tool calls: distinguish streamed response blocks and matched tool results from genuine conversation forks.

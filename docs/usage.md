@@ -1,71 +1,101 @@
 # Usage, privacy, and limits
 
+[Project README](../README.md) · [Documentation](README.md) · [Setup](setup.md)
+
+[Workflow](#annotate-a-reply) · [Keys](#key-reference) ·
+[Insert or Send](#insert-versus-send) · [Privacy](#privacy-and-limits)
+
 ## Annotate a reply
 
-1. In an agent pane, press **Ctrl+S, then o**.
-2. Pick a reply with `j`/`k`, `/` search, and **Enter**. The list is newest first;
-   each row uses a fixed-width compact time column (`2m`, `3h`, `7d`) and an
-   aligned message preview, never internal IDs.
-3. Select a quote with `v` or `V`, then press **Enter** to write a comment.
-4. Save the comment with **Ctrl+S**. The source span and note label stay highlighted
-   in bold yellow with dark text, distinct from your active Vim selection.
-5. Press **s** to insert without submitting, or **S** to send immediately.
-   Both close the annotation pane **only after successful delivery**.
+1. Start your agent normally in a Rex pane after [setup](setup.md).
+2. Press **Ctrl+S, then o** to open the reply picker.
+3. Use `j`/`k` or `/` search, then **Enter** to open a reply. Newest replies are
+   first. Rows show a compact relative time and preview, not internal IDs.
+4. Select a quote with `v` or `V`, then **Enter** to write a comment. Without a
+   selection, Enter uses the current logical line, including a hard newline
+   when one exists.
+5. Save the comment with **Ctrl+S**. Saved quotes and note labels are yellow;
+   this is separate from the active Vim selection.
+6. Preview with `p`, copy with `y`, insert with `s`, or Send with `S`.
 
-**Uppercase S submits immediately. There is no typed SEND confirmation.**
-Lowercase `s` never sends an extra Return. Pi inserts through its editor API;
-Codex/Claude use guarded bracketed paste and still ask whether the input is ready
-for an insertion. Put these agents at an editable prompt, not a dialog.
+The pane is centered and keeps the source pane's width. Its help header wraps
+on narrow panes without changing the reply text or quote positions. Closing it
+restores source focus only if you have not deliberately moved elsewhere.
 
-| Key | Action |
-| --- | --- |
-| `hjkl`, `w`/`b`, `/` | Native Vim movement and search |
-| `v` / `V`, then Enter | Comment on selected characters / logical lines |
-| `Ctrl+S` in a comment | Save a multiline comment |
-| `Esc`, then `q` in a comment | Cancel; confirm before discarding edits |
-| `m` | Edit or remove a saved note |
-| `p` | Optional exact Markdown preview; `q` / Esc returns |
-| `y` | Copy the same Markdown to the macOS clipboard; stay open |
-| `s` | Insert into the original agent draft, then close; no submission |
-| `S` | Send to the original agent immediately, then close |
-| `q` | Close; warn before discarding unfinished notes |
+## Key reference
 
-Multiple notes share one Markdown payload. Delivery failures keep the notes open.
-Preview, copy, insertion, and Send use the same formatter.
+| Where | Key | Action |
+| --- | --- | --- |
+| Reply picker | `j` / `k`, `/`, Enter | Move, search, and open a reply |
+| Reply view | `hjkl`, `w` / `b`, `/` | Native Vim movement and search |
+| Reply view | `v` / `V`, then Enter | Comment on characters / logical lines |
+| Reply view | Enter without a selection | Comment on the current logical line |
+| Comment editor | `Ctrl+S` | Save a multiline comment |
+| Comment editor | Esc, then `q` | Cancel; confirm before discarding edits |
+| Reply view | `m` | Edit or remove a saved note |
+| Reply view | `p` | Preview the exact Markdown; `q` / Esc returns |
+| Reply view | `y` | Copy the Markdown to the macOS clipboard; stay open |
+| Reply view | `s` | Insert into the original agent draft; do not submit |
+| Reply view | `S` | Send immediately to the original agent |
+| Reply view | `q` | Close; warn before discarding unfinished notes |
+
+## Insert versus Send
+
+**Lowercase `s` never submits an extra Return. Uppercase `S` sends immediately.**
+There is no typed `SEND` confirmation for uppercase S.
+
+- **Pi:** insertion uses its editor API, including with Pi-vim. The existing
+  draft is preserved.
+- **Codex, Claude, and CUX:** insertion uses guarded bracketed paste. Keep the
+  original agent at an editable prompt, not a dialog. Lowercase `s` asks you to
+  confirm that prompt is ready before it pastes.
+- **Both actions:** the annotation pane closes only after successful delivery.
+  Errors keep your notes open. Do not automatically retry a failed operation.
+
+Multiple notes form one Markdown payload. Preview, copy, insert, and Send use
+the same formatter and selected quotes. Sending feedback may start an agent's
+next model response; opening, selecting, and commenting do not send one.
+
+## When delivery fails
+
+1. Keep the annotation pane open so you do not lose the notes.
+2. Inspect the original draft. A timeout can mean the paste or Send already
+   happened; retrying blindly could duplicate it.
+3. Read the error and [troubleshooting guide](setup.md#common-fixes). A changed
+   process or conversation must not receive feedback intended for the old one.
+
+The plugin does not select a different session or retry a side effect for you.
+
+## Other terminal panes
+
+An unrecognized terminal pane can be opened as an immutable terminal snapshot.
+This path is **copy only**: it does not acquire an agent-reply binding or enable
+insertion/Send. A terminal snapshot may contain any captured terminal text, not
+only assistant replies. Older discarded scrollback cannot be recovered.
 
 ## Requirements
 
-- Local macOS Rex and its `rex` CLI (API revision 11 tested).
-- Neovim with `vim.system` and `getregion` (0.12.5 tested).
-- Python 3.9+ for setup and native session adapters; Node.js/Pi for the Pi bridge.
-- Native agent integrations below for exact reply history. Ordinary unrecognized
-  terminal panes can still annotate an immutable terminal snapshot (copy only).
-
-The annotation pane is centered and retains the source pane's width, including
-split and zoomed layouts. Detail-view shortcuts stay in a separate multiline
-header that reflows as the pane narrows; reply text and quote coordinates are
-unchanged. Closing it restores the original source focus unless
-you deliberately moved to another pane/window.
-
+Use local macOS Rex with its CLI, Neovim with `vim.system` and `getregion`, and
+Python 3.9+. Pi also needs its normal Node.js runtime and the registered bridge.
+See [required tools](setup.md#required-tools) for installation details.
 
 ## Privacy and limits
 
-- Quotes, comments, preview, and Neovim search history stay in memory. No swap,
+- Annotation drafts, preview, and Neovim search history stay in memory. No swap,
   undo, shada, modelines, user Neovim config, or user plugins are loaded.
-- Reply history is assistant-visible text only. Hidden reasoning, user messages,
-  system instructions, tool data, images, and extension state are not exported.
-- Pi replies are bounded to 4 MiB and 5,000 replies; native transcript inputs
-  are bounded to 4 MiB and 5,000 records before filtering. Oversized input fails
-  visibly rather than returning partial history. Ordinary terminal snapshots cap
-  at 4 MiB; discarded terminal scrollback cannot be recovered.
-- Native transcript registrations hold private metadata only, not copied replies
-  or annotation payloads. The Pi bridge uses a UID/PID-local Unix socket.
-- Every delivery targets the saved Rex session/block/process, never whichever
-  pane happens to have focus. Unknown/changed targets are refused.
-- An ambiguous timeout may mean insertion/submission already happened. **Inspect
-  the original prompt before retrying.** Side effects are never retried for you.
-- Copy intentionally changes the system clipboard. Force-closing an annotation
-  pane can discard its temporary notes without a warning.
+- Copy deliberately moves the payload to your clipboard. Insert/Send moves it
+  to your agent, which may persist it under that agent's own history settings.
+- Agent reply readers export assistant-visible text only. They exclude hidden
+  reasoning, user messages, system instructions, tools, images, and extension state.
+- Pi replies cap at **4 MiB and 5,000 replies**. Native transcript inputs cap at
+  **4 MiB and 5,000 records before filtering**. Terminal snapshots cap at 4 MiB.
+  Oversized input fails visibly instead of returning partial history.
+- Native registrations store private IDs, paths, and process identity, not copied
+  replies or feedback. Pi uses a private UID/PID-local Unix socket.
+- Delivery rechecks the saved Rex pane, process, and conversation. It never
+  targets whichever pane happens to have focus; unknown or changed targets fail.
+- Force-closing a pane can discard its temporary notes without a warning.
 
-
-See [agent activation](../integrations/README.md) and [setup diagnostics](setup.md).
+**Next:** [Troubleshooting](setup.md#common-fixes) ·
+[Exact-session details](../integrations/README.md) ·
+[Related tools](related-tools.md)

@@ -1,10 +1,33 @@
-# Exact native-agent sessions
+# Agent integrations and exact native sessions
+
+[Project README](../README.md) · [Documentation](../docs/README.md) ·
+[Setup](../docs/setup.md) · [Usage](../docs/usage.md)
+
+## Choose an agent
+
+| Agent | Start with | How replies are read |
+| --- | --- | --- |
+| Pi | [Pi guide](pi/README.md) | Live active-branch/editor bridge |
+| Codex CLI | [Codex guide](codex/README.md) | Exact foreground process and registered native rollout |
+| Claude Code / CUX | [Claude/CUX guide](claude/README.md) | Exact hook transcript; CUX also binds the native child lifetime |
+
+For everyday use, start with those guides. The rest of this page is the shared
+native-session safety and developer reference. CUX uses the Claude adapter;
+it is not a separate fourth integration.
+
+[Activation](#activate) · [Binding](#automatic-rex-binding) ·
+[Adapter protocol](#internal-cli-contract) ·
+[Limits](#privacy-limits-and-format-caveats) · [Evidence](#evidence-and-tests)
 
 `session_replies.py` reads only the transcript registered for the saved Rex
 session/block and foreground PID/start identity. It never selects the newest
 session file or copies a transcript into plugin storage.
 
 ## Activate
+
+After installing the CLI, plain `rex-annotation install` configures detected
+agents. The scoped source-checkout examples below are optional; ordinary
+`codex`, `claude`, and `cux` commands inside Rex need no annotation wrapper.
 
 ### Codex CLI
 
@@ -164,8 +187,9 @@ you own. Keep all native transcript files and other users' live bindings intact.
 
 ## Evidence and tests
 
-Research used installed Codex CLI 0.167.0 and Claude Code 2.1.322, their current
-primary docs, and native rollout schemas:
+Native startup checks have been exercised with Codex CLI 0.167.1 and Claude
+Code 2.1.322. These are tested versions, not a guarantee for future transcript
+formats. Format and lifecycle references:
 
 - [Codex hooks, locations, trust, lifecycle payloads](https://learn.chatgpt.com/docs/hooks)
 - [Codex plugin packaging](https://developers.openai.com/plugins/build/plugins)
@@ -202,3 +226,7 @@ to an unreachable fixture model, with all networking denied and no real
 credentials. Neither path can send a real model request. An unexpected
 hook-review screen fails the smoke test. Temporary Rex sessions/homes are
 deleted on both success and failure.
+
+**Next:** [Test command guide](../docs/development.md#optional-live-checks) ·
+[Troubleshooting](../docs/setup.md#common-fixes) ·
+[Related annotation projects](../docs/related-tools.md)
