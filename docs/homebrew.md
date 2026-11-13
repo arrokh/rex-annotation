@@ -1,5 +1,13 @@
 # Homebrew installation and packaging
 
+[Project README](../README.md) · [Documentation](README.md) · [Setup](setup.md)
+
+[Install/upgrade](#install-or-upgrade) · [Stable paths](#upgrade-safe-paths) ·
+[Build a package](#build-a-release-package) · [Local formula](#local-development-formula)
+
+For normal use, install or upgrade below, then follow [Usage](usage.md).
+The later sections are for maintainers and local package testing.
+
 ## Install or upgrade
 
 ```sh
@@ -18,7 +26,9 @@ rex-annotation install &&
 rex-annotation status
 ```
 
-The [formula](../Formula/rex-annotation.rb) lives in this same repository and
+## What Homebrew changes
+
+The [formula](https://github.com/arrokh/rex-annotation/blob/main/Formula/rex-annotation.rb) lives in this same repository and
 uses a checksummed versioned [GitHub release](https://github.com/arrokh/rex-annotation/releases).
 The explicit tap URL is needed because Homebrew otherwise assumes a separate
 `homebrew-rex-annotation` repository. Future `brew update` calls retain this URL.
@@ -47,7 +57,7 @@ From a Git checkout:
 
 ```sh
 python3 scripts/brew-package.py \
-  --source-url https://github.com/arrokh/rex-annotation/releases/download/v0.1.8/rex-annotation-0.1.8.tar.gz
+  --source-url https://github.com/arrokh/rex-annotation/releases/download/v0.1.9/rex-annotation-0.1.9.tar.gz
 ```
 
 Use the actual version from `package.json`. The generator produces:
@@ -89,4 +99,5 @@ tap. Keep `dist/homebrew` while using that development formula. The helper refus
 to overwrite an unowned tap/formula. `--prepare-only` generates files without
 changing Homebrew.
 
-See [release process](development.md#release-process) and [setup](setup.md).
+**Next:** [Setup and diagnostics](setup.md) · [Use the plugin](usage.md) ·
+[Release process](development.md#release-process) · [Uninstall](setup.md#uninstall)

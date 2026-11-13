@@ -1,20 +1,27 @@
 # Setup and troubleshooting
 
+[Project README](../README.md) · [Documentation](README.md) · [Usage](usage.md)
+
+[Requirements](#required-tools) · [Install](#homebrew) ·
+[Source](#source-checkout) · [Status](#status-and-doctor) ·
+[Fix a problem](#common-fixes) · [Options](#setup-options) · [Remove](#uninstall)
+
 ## Required tools
 
-| Tool | How it is provided |
+| Tool | How you get it |
 | --- | --- |
 | macOS and Rex, including the `rex` CLI | Install Rex separately |
-| Neovim with `vim.system` and `getregion` (0.12.x tested) | Brew installs `neovim` automatically |
-| Python 3.9+ | Brew installs `python@3.14` automatically |
-| Pi, Codex CLI 0.167.1+, or Claude Code/CUX | Install only the agent CLIs you intend to use |
+| Neovim with `vim.system` and `getregion` (0.12.x tested) | Homebrew installs `neovim` |
+| Python 3.9+ | Homebrew installs `python@3.14` |
+| Pi, Codex CLI 0.167.1+, or Claude Code/CUX | Install only the agent CLIs you use |
 
-Neovim is required: classic `vi` and Vim are not compatible fallbacks. The UI
-uses Neovim's Lua APIs, floating windows and text highlights. Missing Neovim is
-reported by `rex-annotation status`; setup does not silently switch editors.
-Node.js is part of the Pi runtime when using Pi; native Codex/Claude adapters
-need only the Python dependency. A C compiler is needed only for the optional
-fake-native E2E developer test, not normal plugin use.
+**Neovim is required.** Classic `vi` and Vim are not fallbacks: the UI needs
+Neovim's Lua APIs, floating windows, and selection functions. Pi uses its normal
+Node.js runtime; native Codex/Claude adapters need Python. A C compiler is needed
+only for the optional fake-agent developer tests, not normal use.
+
+Herdr Annotate and Plannotator are separate projects, not prerequisites. See
+[related tools](related-tools.md) if you are looking for those workflows.
 
 ## Homebrew
 
@@ -25,10 +32,14 @@ rex-annotation install &&
 rex-annotation status
 ```
 
-The [formula](../Formula/rex-annotation.rb) lives in this same repository. The
-explicit tap URL is required because the repo is not named `homebrew-*`. Brew
-installs code, Python and Neovim; it does not write to your user configuration.
-Install Rex and the coding-agent CLIs separately.
+The [formula](https://github.com/arrokh/rex-annotation/blob/main/Formula/rex-annotation.rb) is in this repository. The explicit
+tap URL is needed because the repository is not named `homebrew-*`.
+
+Homebrew installs program files and dependencies. The separate
+`rex-annotation install` command writes your integration settings. It detects
+supported agent CLIs on PATH; you do not need to install all three agents.
+
+For an existing installation, use [upgrade steps](homebrew.md#install-or-upgrade).
 
 ## Source checkout
 
@@ -36,77 +47,61 @@ Install Rex and the coding-agent CLIs separately.
 git clone https://github.com/arrokh/rex-annotation.git
 cd rex-annotation
 ./bin/rex-annotation install
-rex-annotation status
+./bin/rex-annotation status
 ```
 
-Source setup links the CLI into `~/.local/bin`; add that directory to PATH if
-your shell does not already include it.
+Use `./bin/rex-annotation` for checkout-specific commands. Setup can link the CLI
+into `~/.local/bin`, but it keeps an existing CLI on PATH, such as Homebrew's,
+when appropriate. Add `~/.local/bin` to PATH if you use that source-install link.
 
-## Setup options
+Avoid mixing installation roots accidentally. [Status](#status-and-doctor)
+reports a loader/path mismatch instead of overwriting a custom consumer loader.
 
-Plain `install` configures Rex and every supported agent CLI detected on PATH:
-Pi, Codex, and Claude Code (including CUX). It enables the Codex hooks feature,
-trusts only this integration's exact hook definitions, and verifies readiness.
-No extra approval prompt, `--trust-hooks` option, or manual `/hooks` step is needed.
+## What setup changes
 
-Selection options remain available for deliberately scoped setup:
-
-| Option | Behavior |
+| Integration | Owned setup |
 | --- | --- |
-| `--detect` | Explicit spelling of the default agent detection |
-| `--rex` | Configure Rex only unless other selections are supplied |
-| `--pi` | Register the root Pi package using `pi install` |
-| `--codex` | Link its skill, merge lifecycle hooks, enable and trust only owned hooks |
-| `--claude` | Merge owned lifecycle hooks into Claude user settings |
-| `--all` | Select all three integrations; selected dependencies must exist |
-| `--reload-rex` | Require running Rex; compatibility option for config activation |
+| Rex | Loader and init reference; check/reload running Rex config and verify the action |
+| Pi | Register the root package through `pi install`; verify package/extension registration |
+| Codex | Skill link, lifecycle hooks, hooks feature, and native trust for only the exact owned hook definitions |
+| Claude/CUX | Owned lifecycle hooks merged into Claude user settings |
 
-Setup automatically checks and reloads running Rex config, then verifies the
-annotation action. If Rex is stopped, its saved config loads on the next launch;
-setup does not start Rex. Existing coding-agent processes are never reloaded.
+Repeating setup is safe. Unrelated hooks and settings remain intact. Unknown
+existing files are not overwritten. Explicit hook-disable and organization
+policies are reported as blockers, not bypassed.
 
-Setup never installs an agent CLI, changes authentication or sandbox/tool-approval
-policy, or sends a model request. Codex configuration uses an isolated config-only
-app-server process with networking denied; no coding-agent thread is started. Repeating setup is safe;
-unrelated config/hooks remain intact. Unknown existing files are not overwritten.
-Unsupported Codex versions, failed verification, and hook-policy blockers return
-nonzero instead of claiming the integration is ready.
+Setup does **not** install an agent CLI, change authentication or sandbox/tool
+approval policy, start a model request, or reload an agent process. CUX retains
+control of its accounts, credentials, refresh, and switching.
 
-### Native agents: normal commands
+If Rex is running, only its configuration is reloaded. If it is stopped, setup
+saves configuration for the next launch without starting Rex. Codex trust uses a
+bounded, network-denied config-only app-server; no coding-agent thread starts.
 
-After `install`, start `codex`, `claude`, or `cux`
-normally in a Rex pane. CUX counts as Claude during detection and diagnostics,
-including installations where only `cux` is on PATH. No aliases, PATH shims, or special launchers are required. The
-hooks bind the exact foreground process and hook-provided conversation; outside
-Rex they do nothing. Codex can defer lifecycle hooks until the first prompt. If
-you annotate a resumed thread before sending a new prompt, the plugin verifies
-the one rollout file open by that exact foreground Codex PID. It fails safely if
-that file is missing or ambiguous; it never guesses the newest transcript. Setup
-never restarts an existing native agent.
+## Native agents: normal commands
 
-Codex hooks live in `$CODEX_HOME/hooks.json` (default `~/.codex/hooks.json`).
-Claude hooks live in `$CLAUDE_CONFIG_DIR/settings.json` (default
-`~/.claude/settings.json`). Only this integration's handlers are merged; other
-settings and hooks remain intact. Run setup with the same configuration-directory
-environment as the agent. Explicitly disabled hooks and organization policy are
-not overridden. CUX keeps ownership of its accounts, credentials and switching;
-setup does not run CUX account commands. Codex approval is persisted only for
-this integration's definitions through Codex's own hook/config API. Other hooks
-are never automatically trusted, and no trust-bypass flags are used.
+After setup, start `codex`, `claude`, or `cux` normally inside Rex. CUX uses the
+Claude integration, even when only `cux` is on PATH. No aliases, PATH shims, or
+annotation wrapper are required. Hooks outside Rex do nothing.
 
-## Rex loader
+Start a new agent process deliberately when you need it to load newly installed
+hooks or a Pi bridge. Installation leaves existing processes alone; do not
+reload a working session merely to clear an informational status check.
 
-The canonical module is `require("rex-annotation")`. Its file at
-`~/.config/rex/rex-annotation.lua` loads this project's `rex/annotate.lua`.
-Old managed module names migrate without loading the action twice.
+Use the same configuration-directory environment for setup and the agent:
 
-A source loader records the checkout; a Brew loader uses its stable `opt` path,
-not a versioned Cellar directory. Custom consumer-managed loaders may require
-an explicit path update when moving between a source checkout and Brew. Status
-reports a mismatch instead of overwriting a custom loader.
+| Agent | Configuration |
+| --- | --- |
+| Codex | `$CODEX_HOME/hooks.json`, normally `~/.codex/hooks.json` |
+| Claude/CUX | `$CLAUDE_CONFIG_DIR/settings.json`, normally `~/.claude/settings.json` |
 
-The only key binding is `Ctrl+S, then o`. The palette action is **Annotate Agent
-Reply or Terminal Output**.
+Codex can defer hooks until its first prompt. A resumed thread can still work
+before new input when exactly one valid rollout is open by that exact foreground
+Codex PID. Missing or multiple candidates are refused; the plugin never guesses
+the newest transcript. A new session may simply have no saved reply yet.
+
+See the [Pi](../integrations/pi/README.md), [Codex](../integrations/codex/README.md),
+and [Claude/CUX](../integrations/claude/README.md) guides for agent-specific details.
 
 ## Status and doctor
 
@@ -116,33 +111,94 @@ rex-annotation status --json
 rex-annotation doctor
 ```
 
-These commands do not change settings, hook approvals, or loaded agent runtimes.
-They check the CLI, Python, Neovim features, Rex loader/init/config/live action,
-and agent registration. Codex may create its normal local logs/cache while its
-network-denied config process reads native hook state.
+These checks do not change settings, approvals, or loaded agent runtimes. They
+inspect tools, the Rex loader/config/action, and agent registration. Codex may
+create normal local cache/log files while its network-denied config process
+reads native hook state.
 
-- **ok**: the observable checks passed.
-- **attention**: setup checks passed, but an existing agent's loaded runtime or
-  managed policy cannot be observed. This is not a failed install.
-- **fail**, exit code 1: a required check failed. Follow the printed fix.
+| Result | Meaning | Next step |
+| --- | --- | --- |
+| `ok` | The observable checks passed | Open the annotation action |
+| `attention` | Setup checks passed, but an existing runtime or managed policy is not observable | Read the named check; this alone is not a failed install |
+| `fail`, exit code 1 | A required check failed | Follow the printed fix |
 
-Use `status --pi`, `--codex`, or `--claude` to require a particular integration.
-A registered Pi package with its extension disabled is not reported healthy.
+Use `status --pi`, `--codex`, or `--claude` to require one integration. A registered
+Pi package whose extension is explicitly disabled is not reported healthy.
 
 ## Common fixes
 
-- **CLI missing:** add `~/.local/bin` to PATH after source install; Brew installs
-  it into the Brew bin directory.
-- **Rex action missing:** run `rex config check`, then `rex config reload`.
-- **Codex hook readiness:** rerun `rex-annotation install`. It enables and trusts
-  only its own hooks and verifies the result. If the config API is unsupported,
-  upgrade Codex; explicit hook-disable or managed policies are reported, not bypassed.
-- **Pi bridge not loaded:** an existing process retains its loaded extension.
-  Only reload for bridge changes after checking session-auth effects. Do not
-  reload a working session just to clear an informational status check.
-- **Native reply history unavailable:** run `rex-annotation install` with the
-  same `CODEX_HOME`/`CLAUDE_CONFIG_DIR` overrides used by the agent. For Codex,
-  send its first prompt if no saved rollout is open in the foreground process.
-  See the [integration guide](../integrations/README.md).
-- **Delivery timeout:** inspect the original draft before retrying. The operation
-  may already have happened; the plugin never retries it automatically.
+| Symptom | Safe next step |
+| --- | --- |
+| CLI missing | Check PATH. Source links use `~/.local/bin`; Homebrew uses its bin directory. |
+| Rex action missing | Run `rex config check`, then `rex config reload`. This reloads Rex config, not agents. |
+| Codex hooks not ready | Rerun `rex-annotation install`; it trusts only its own hooks. Upgrade unsupported Codex versions. Do not bypass explicit policy. |
+| Pi bridge not loaded | Start a new Pi process, or deliberately reload only after reviewing session-only auth effects. Existing processes keep their loaded extension. |
+| No native reply binding | Check the configuration-directory overrides used by setup and the agent. New processes should run normally in a Rex pane. |
+| Claude/CUX ambiguous branch | Update the plugin first. If it persists, report the exact error and pane/session metadata: the adapter cannot prove one conversation. Do not rewrite the transcript or choose a file by recency. |
+| History exceeds a limit | See [input limits](usage.md#privacy-and-limits); the plugin refuses partial history rather than silently truncating it. |
+| Paste/Send timeout | Inspect the original draft before retrying. The operation may already have happened; automatic retries are disabled. |
+
+When reporting a problem, include `rex-annotation --version`, the agent name,
+error text, and the relevant status checks. Do not post credentials or an entire
+private transcript. [Open an issue](https://github.com/arrokh/rex-annotation/issues).
+
+## Setup options
+
+Plain `install` detects supported CLIs. Use these only when you want a narrower
+selection or an explicit dependency check:
+
+| Option | Behavior |
+| --- | --- |
+| `--detect` | Explicit spelling of default agent detection |
+| `--rex` | Configure Rex only unless other selections are supplied |
+| `--pi` | Register and verify the root Pi package |
+| `--codex` | Merge lifecycle hooks, enable hooks, and trust only owned definitions |
+| `--claude` | Merge owned Claude lifecycle hooks; also used for CUX |
+| `--all` | Select all three integrations; selected dependencies must exist |
+| `--reload-rex` | Require running Rex; compatibility option for config activation |
+
+No `--trust-hooks` flag, installer approval prompt, or manual `/hooks` step is
+needed. Unsupported APIs, failed verification, and policy blockers return
+nonzero instead of claiming readiness.
+
+## Rex loader
+
+The canonical module is `require("rex-annotation")`. Its loader at
+`~/.config/rex/rex-annotation.lua` loads this project's `rex/annotate.lua`.
+Old managed module names migrate without loading the action twice.
+
+A source loader records its checkout. A Homebrew loader uses the stable `opt`
+path, not a versioned Cellar directory. Custom consumer-managed loaders are not
+overwritten; review a reported path mismatch when moving between installs.
+
+The key sequence is **Ctrl+S, then o**. The palette action is **Annotate Agent
+Reply or Terminal Output**.
+
+## Uninstall
+
+There is no automatic uninstall command. Remove only the entries owned by the
+installation you selected; preserve unrelated configuration and credentials.
+
+1. Remove that exact Pi package registration with `pi remove /exact/package/root`
+   if you installed it. Do not remove every Pi package or a live bridge socket.
+2. Remove only Rex Annotation's handlers from Codex `hooks.json` and Claude
+   `settings.json`, in the same config directories used at setup. Owned commands
+   point to this package's `integrations/codex/hooks/register.py` or
+   `integrations/claude/hooks/register.py`. Preserve other handlers, settings,
+   approvals, and policy; do not clear Codex's trust state globally.
+3. Remove the Codex `rex-annotation` skill link only if it points to this package.
+   If you separately enabled the root Claude plugin, disable only that plugin.
+4. Remove this module's Rex init reference and its managed loader, not the whole
+   Rex configuration. Treat custom consumer loaders as user-owned files.
+5. Check and reload Rex configuration after that cleanup. Do not restart or
+   reload coding-agent sessions automatically.
+6. If using Homebrew, remove the program with
+   `brew uninstall arrokh/rex-annotation/rex-annotation`. Remove a source CLI
+   symlink only if it points to the checkout you intended to remove.
+
+Keep native agent transcripts and other live session bindings intact. Normal
+shutdown cleans up owned native registrations; force-kill can leave private
+metadata that cannot match a new process with a different start identity.
+
+**Next:** [Use the annotation pane](usage.md) · [Agent/session reference](../integrations/README.md) ·
+[Homebrew guide](homebrew.md)

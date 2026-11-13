@@ -1,5 +1,22 @@
 # Pi bridge for Rex Annotation
 
+[Project README](../../README.md) · [Documentation](../../docs/README.md) ·
+[Agent index](../README.md)
+
+## Normal setup
+
+Plain `rex-annotation install` detects Pi. To select Pi explicitly:
+
+```sh
+rex-annotation install --pi
+```
+
+Start Pi normally in a Rex pane, then use **Ctrl+S, then o**.
+[Usage](../../docs/usage.md) covers selection, comments, insert, and Send.
+The sections below explain package registration and the bridge internals.
+
+## Direct package registration
+
 The [standalone project root](../../README.md) is the preferred Pi package:
 
 ```sh
@@ -57,5 +74,9 @@ From the project root:
 node --test integrations/pi/test/*.test.mjs
 ```
 
-See the root README for disposable, network-denied actual Pi/Pi-vim checks.
-No production agent message is sent by those tests.
+See the [development guide](../../docs/development.md#optional-live-checks) for
+disposable, network-denied actual Pi/Pi-vim checks. No production agent message
+is sent by those tests.
+
+**Next:** [Setup/status](../../docs/setup.md#status-and-doctor) ·
+[Privacy and limits](../../docs/usage.md#privacy-and-limits)
