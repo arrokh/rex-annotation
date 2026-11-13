@@ -4,6 +4,7 @@ class RexAnnotation < Formula
   homepage "https://github.com/arrokh/rex-annotation"
   url "https://github.com/arrokh/rex-annotation/releases/download/v0.1.9/rex-annotation-0.1.9.tar.gz"
   version "0.1.9"
+  revision 1
   sha256 "114fb1d0eec1c62d127aeaee1ba7bf465f0ab4dae68e2fbd66ca1c5b6569b170"
   license "MIT"
 
@@ -13,6 +14,10 @@ class RexAnnotation < Formula
 
   def install
     libexec.install Dir["*"], ".claude-plugin"
+    # Populate prefix metadata so Homebrew does not move the libexec copies.
+    ["README.md", "CHANGELOG.md", "LICENSE"].each do |name|
+      cp libexec/name, prefix/name
+    end
     (bin/"rex-annotation").write <<~SH
       #!/bin/sh
       export REX_ANNOTATION_ROOT="#{opt_libexec}"
@@ -34,6 +39,12 @@ class RexAnnotation < Formula
   test do
     assert_match version.to_s, shell_output("#{bin}/rex-annotation --version")
     assert_match "status", shell_output("#{bin}/rex-annotation --help")
+    assert_path_exists libexec/"README.md"
+    assert_path_exists libexec/"CHANGELOG.md"
+    assert_path_exists libexec/"LICENSE"
+    ENV["PYTHONDONTWRITEBYTECODE"] = "1"
+    system Formula["python@3.14"].opt_bin/"python3.14", "-m", "unittest", "discover",
+           "-s", libexec/"tests", "-p", "test_docs_navigation.py"
     (testpath/"fake-bin/rex").write <<~SH
       #!/bin/sh
       case "$*" in
