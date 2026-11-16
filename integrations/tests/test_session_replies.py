@@ -179,7 +179,7 @@ class SessionRepliesTests(unittest.TestCase):
         with self.assertRaisesRegex(replies.ReplyError, "ambiguous active branch"):
             replies._parse_transcript("claude", str(branch), CLAUDE_ID)
 
-    def test_malformed_control_oversize_and_entry_limit_fail_closed(self):
+    def test_malformed_control_and_oversized_record_fail_closed(self):
         path = Path(self.temporary.name) / "bad.jsonl"
         path.write_text('{"type":"session_meta"}\nnot json\n', encoding="utf-8")
         with self.assertRaisesRegex(replies.ReplyError, "malformed transcript entry"):
@@ -193,12 +193,66 @@ class SessionRepliesTests(unittest.TestCase):
             replies._parse_transcript("claude", str(path), CLAUDE_ID)
 
         path.write_bytes(b"x" * (replies.MAX_TRANSCRIPT_BYTES + 1))
-        with self.assertRaisesRegex(replies.ReplyError, "4 MiB"):
+        with self.assertRaisesRegex(replies.ReplyError, "latest transcript record exceeds 4 MiB"):
             replies._parse_transcript("claude", str(path), CLAUDE_ID)
 
-        path.write_text("\n".join('{"type":"event"}' for _ in range(5001)) + "\n", encoding="utf-8")
-        with self.assertRaisesRegex(replies.ReplyError, "5000-entry"):
+    def test_large_codex_transcript_returns_latest_reply(self):
+        path = Path(self.temporary.name) / "large-codex.jsonl"
+        header = {"timestamp":"2026-01-02T03:04:05.000Z", "type":"session_meta", "payload":{"id":CODEX_ID}}
+        old = {"timestamp":"2026-01-02T03:04:06.000Z", "type":"response_item",
+               "payload":{"type":"function_call_output", "output":"old " + "x" * (replies.MAX_TRANSCRIPT_BYTES + 1024)}}
+        latest = {"timestamp":"2026-01-02T03:04:07.000Z", "type":"response_item",
+                  "payload":{"id":"latest-reply", "type":"message", "role":"assistant",
+                             "phase":"final_answer", "content":[{"type":"output_text", "text":"Latest answer."}]}}
+        path.write_text("\n".join(json.dumps(row) for row in (header, old, latest)) + "\n", encoding="utf-8")
+
+        result = replies._parse_transcript("codex", str(path), CODEX_ID)
+        self.assertEqual([item["id"] for item in result], ["latest-reply"])
+        self.assertEqual(result[0]["text"], "Latest answer.")
+
+    def test_large_claude_transcript_returns_latest_reply(self):
+        path = Path(self.temporary.name) / (CLAUDE_ID + ".jsonl")
+        old = {"type":"summary", "uuid":"old-summary", "parentUuid":None,
+               "sessionId":CLAUDE_ID, "summary":"old " + "x" * (replies.MAX_TRANSCRIPT_BYTES + 1024)}
+        user = {"type":"user", "uuid":"latest-user", "parentUuid":"old-summary",
+                "sessionId":CLAUDE_ID, "timestamp":"2026-01-02T03:04:06.000Z",
+                "message":{"role":"user", "content":[]}}
+        latest = {"type":"assistant", "uuid":"latest-reply", "parentUuid":"latest-user",
+                  "sessionId":CLAUDE_ID, "timestamp":"2026-01-02T03:04:07.000Z",
+                  "message":{"role":"assistant", "content":[{"type":"text", "text":"Latest answer."}]}}
+        path.write_text("\n".join(json.dumps(row) for row in (old, user, latest)) + "\n", encoding="utf-8")
+
+        result = replies._parse_transcript("claude", str(path), CLAUDE_ID)
+        self.assertEqual([item["id"] for item in result], ["latest-reply"])
+        self.assertEqual(result[0]["text"], "Latest answer.")
+
+    def test_large_claude_transcript_still_rejects_ambiguous_recent_roots(self):
+        path = Path(self.temporary.name) / (CLAUDE_ID + "-ambiguous.jsonl")
+        old = {"type":"summary", "uuid":"old-summary", "parentUuid":None,
+               "sessionId":CLAUDE_ID, "summary":"old " + "x" * (replies.MAX_TRANSCRIPT_BYTES + 1024)}
+        branches = [
+            {"type":"user", "uuid":"user-a", "parentUuid":"missing-a", "sessionId":CLAUDE_ID,
+             "message":{"role":"user", "content":[]}},
+            {"type":"user", "uuid":"user-b", "parentUuid":"missing-b", "sessionId":CLAUDE_ID,
+             "message":{"role":"user", "content":[]}},
+        ]
+        path.write_text("\n".join(json.dumps(row) for row in [old] + branches) + "\n", encoding="utf-8")
+
+        with self.assertRaisesRegex(replies.ReplyError, "ambiguous active branch"):
             replies._parse_transcript("claude", str(path), CLAUDE_ID)
+
+    def test_record_limit_keeps_the_latest_codex_window(self):
+        path = Path(self.temporary.name) / "many-codex.jsonl"
+        rows = [{"timestamp":"2026-01-02T03:04:05.000Z", "type":"session_meta", "payload":{"id":CODEX_ID}}]
+        rows.extend({"type":"event_msg", "payload":{"type":"ignored"}}
+                    for _ in range(replies.MAX_TRANSCRIPT_ENTRIES + 1))
+        rows.append({"timestamp":"2026-01-02T03:04:07.000Z", "type":"response_item",
+                     "payload":{"id":"latest-reply", "type":"message", "role":"assistant",
+                                "phase":"final_answer", "content":[{"type":"output_text", "text":"Latest answer."}]}})
+        path.write_text("\n".join(json.dumps(row) for row in rows) + "\n", encoding="utf-8")
+
+        result = replies._parse_transcript("codex", str(path), CODEX_ID)
+        self.assertEqual([item["id"] for item in result], ["latest-reply"])
 
     def test_codex_native_hooks_register_refresh_and_remove_exact_session(self):
         path = self.transcript_copy("codex_session.jsonl")

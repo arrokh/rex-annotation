@@ -153,8 +153,11 @@ so a delayed old SessionEnd cannot remove a newer session's binding.
   records `0600`, atomic replacement. `REX_ANNOTATION_STATE_DIR` overrides the
   state base for tests. Records contain IDs, transcript paths and process-start
   identity, never transcript or annotation text.
-- Native input is bounded to **4 MiB and 5,000 JSONL records before filtering**.
-  Malformed, stale, oversized, mismatched and control-bearing input fails visibly.
+- Native readers load at most the latest **4 MiB and 5,000 JSONL records**;
+  Codex also reads the first session-metadata record. Older history is skipped.
+  Malformed, stale, oversized-record, mismatched and control-bearing input fails
+  visibly. A truncated Claude prefix is accepted only when its remaining graph
+  still proves one unambiguous conversation chain.
 - Only known assistant-visible blocks are read: Claude `text`, Codex
   `output_text`/`refusal` on visible channels. Hidden analysis/thinking, tools,
   user messages, images, sidechains, summaries and unknown channels are excluded.

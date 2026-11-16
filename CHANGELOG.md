@@ -2,6 +2,12 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.1.10
+
+- Read only the latest bounded window of native transcripts, so large session histories do not block recent reply annotations.
+- Preserve Codex session identity and reject truncated Claude history unless its remaining graph still proves one unambiguous conversation.
+- Add regression coverage for oversized transcripts, recent-record limits, and ambiguous truncated branches.
+
 ## 0.1.9
 
 - Reorganize the README and guides around setup, use, troubleshooting, and development; add a documentation index, per-agent navigation, and references to Herdr Annotate, Plannotator, and Plannotator TUI.

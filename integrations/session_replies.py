@@ -232,7 +232,27 @@ def _read_binding(path: Path) -> Dict[str, Any]:
         raise ReplyError("cannot read reply binding: {}".format(error))
 
 
-def _open_transcript(path_text: str) -> bytes:
+def _read_tail(stream: Any, file_size: int, budget: int) -> bytes:
+    start = max(0, file_size - budget)
+    truncated = start > 0
+    if truncated:
+        stream.seek(start - 1)
+        starts_at_record = stream.read(1) == b"\n"
+    else:
+        starts_at_record = True
+    stream.seek(start)
+    data = stream.read(budget)
+    if truncated and not starts_at_record:
+        newline = data.find(b"\n")
+        if newline < 0:
+            raise ReplyError("latest transcript record exceeds 4 MiB")
+        data = data[newline + 1:]
+    if file_size and not data:
+        raise ReplyError("latest transcript record exceeds 4 MiB")
+    return data
+
+
+def _open_transcript(path_text: str, agent: str) -> Tuple[bytes, bool]:
     path = Path(path_text)
     if not path.is_absolute() or path.suffix != ".jsonl":
         raise ReplyError("registered transcript path must be an absolute .jsonl file")
@@ -247,11 +267,21 @@ def _open_transcript(path_text: str) -> bytes:
             flags |= os.O_NOFOLLOW
         fd = os.open(str(path), flags)
         with os.fdopen(fd, "rb") as stream:
-            data = stream.read(MAX_TRANSCRIPT_BYTES + 1)
-            final_size = os.fstat(stream.fileno()).st_size
-        if len(data) > MAX_TRANSCRIPT_BYTES or final_size > MAX_TRANSCRIPT_BYTES:
-            raise ReplyError("registered transcript exceeds the 4 MiB limit")
-        return data
+            file_size = os.fstat(stream.fileno()).st_size
+            if file_size <= MAX_TRANSCRIPT_BYTES:
+                data = stream.read(MAX_TRANSCRIPT_BYTES + 1)
+                if len(data) > MAX_TRANSCRIPT_BYTES:
+                    raise ReplyError("transcript grew beyond the 4 MiB read limit")
+                return data, False
+
+            header = b""
+            if agent == "codex":
+                stream.seek(0)
+                header = stream.readline(MAX_TRANSCRIPT_BYTES + 1)
+                if len(header) > MAX_TRANSCRIPT_BYTES or not header.endswith(b"\n"):
+                    raise ReplyError("Codex session metadata exceeds the 4 MiB read limit")
+            tail = _read_tail(stream, file_size, MAX_TRANSCRIPT_BYTES - len(header))
+            return header + tail, True
     except ReplyError:
         raise
     except FileNotFoundError:
@@ -260,7 +290,7 @@ def _open_transcript(path_text: str) -> bytes:
         raise ReplyError("cannot read registered transcript: {}".format(error))
 
 
-def _jsonl_entries(data: bytes) -> List[Dict[str, Any]]:
+def _jsonl_entries(data: bytes, preserve_first: bool = False) -> Tuple[List[Dict[str, Any]], bool]:
     try:
         text = data.decode("utf-8")
     except UnicodeDecodeError as error:
@@ -268,8 +298,13 @@ def _jsonl_entries(data: bytes) -> List[Dict[str, Any]]:
     raw_lines = text.split("\n")
     if raw_lines and raw_lines[-1] == "":
         raw_lines.pop()
-    if len(raw_lines) > MAX_TRANSCRIPT_ENTRIES:
-        raise ReplyError("transcript exceeds the 5000-entry limit")
+    entry_limit = MAX_TRANSCRIPT_ENTRIES + (1 if preserve_first else 0)
+    truncated = len(raw_lines) > entry_limit
+    if truncated:
+        if preserve_first:
+            raw_lines = raw_lines[:1] + raw_lines[-MAX_TRANSCRIPT_ENTRIES:]
+        else:
+            raw_lines = raw_lines[-MAX_TRANSCRIPT_ENTRIES:]
     entries = []
     for number, raw_line in enumerate(raw_lines, 1):
         line = raw_line[:-1] if raw_line.endswith("\r") else raw_line
@@ -282,7 +317,7 @@ def _jsonl_entries(data: bytes) -> List[Dict[str, Any]]:
         if not isinstance(entry, dict) or not isinstance(entry.get("type"), str):
             raise ReplyError("malformed transcript entry at line {}".format(number))
         entries.append(entry)
-    return entries
+    return entries, truncated
 
 
 def _clean_visible_text(text: str) -> str:
@@ -335,7 +370,7 @@ def _claude_main_entry(entry: Dict[str, Any]) -> bool:
     return not entry.get("isSidechain") and not entry.get("teamName")
 
 
-def _validate_claude_graph(entries: List[Dict[str, Any]]) -> None:
+def _validate_claude_graph(entries: List[Dict[str, Any]], allow_truncated_prefix: bool = False) -> None:
     """Prove a single conversation, allowing typed parallel-tool fan-out only.
 
     Claude streams one assistant record per content block with the same API
@@ -366,6 +401,7 @@ def _validate_claude_graph(entries: List[Dict[str, Any]]) -> None:
         raise ReplyError("Claude transcript contains different conversation writers")
 
     parents = {}
+    external_parents = {}
     for uid, entry in nodes.items():
         parent = entry["parentUuid"]
         # The explicit logical link joins archived history across compaction.
@@ -375,8 +411,13 @@ def _validate_claude_graph(entries: List[Dict[str, Any]]) -> None:
         if parent is not None:
             parent = _require_token(parent, "Claude parent message id", 512)
             if parent not in nodes:
-                raise ReplyError("Claude transcript has an unresolved parent link")
+                if not allow_truncated_prefix:
+                    raise ReplyError("Claude transcript has an unresolved parent link")
+                parent = external_parents.setdefault(parent, object())
         parents[uid] = parent
+    for parent in external_parents.values():
+        nodes[parent] = {"type": "summary"}
+        parents[parent] = None
 
     checked = set()
     for uid in nodes:
@@ -514,10 +555,10 @@ def _validate_claude_graph(entries: List[Dict[str, Any]]) -> None:
         raise ReplyError("Claude transcript has a disconnected or cyclic conversation")
 
 
-def _claude_replies(path: Path, conversation_id: str, data: bytes) -> List[Dict[str, str]]:
-    entries = _jsonl_entries(data)
+def _claude_replies(path: Path, conversation_id: str, data: bytes, truncated_prefix: bool = False) -> List[Dict[str, str]]:
+    entries, truncated_by_count = _jsonl_entries(data)
     _claude_session_matches(entries, path, conversation_id)
-    _validate_claude_graph(entries)
+    _validate_claude_graph(entries, allow_truncated_prefix=truncated_prefix or truncated_by_count)
 
     replies_with_order = []
     used_ids = set()
@@ -578,7 +619,7 @@ def _codex_session_matches(entries: List[Dict[str, Any]], conversation_id: str) 
 
 
 def _codex_replies(path: Path, conversation_id: str, data: bytes) -> List[Dict[str, str]]:
-    entries = _jsonl_entries(data)
+    entries, _ = _jsonl_entries(data, preserve_first=True)
     _codex_session_matches(entries, conversation_id)
     if any(entry.get("type") == "event_msg" and isinstance(entry.get("payload"), dict)
            and entry["payload"].get("type") == "thread_rolled_back" for entry in entries):
@@ -636,13 +677,13 @@ def _codex_replies(path: Path, conversation_id: str, data: bytes) -> List[Dict[s
 
 
 def _parse_transcript(agent: str, transcript_path: str, conversation_id: str) -> List[Dict[str, str]]:
+    if agent not in ("claude", "codex"):
+        raise ReplyError("unsupported agent: " + agent)
     path = Path(transcript_path)
-    data = _open_transcript(transcript_path)
+    data, truncated_prefix = _open_transcript(transcript_path, agent)
     if agent == "claude":
-        return _claude_replies(path, conversation_id, data)
-    if agent == "codex":
-        return _codex_replies(path, conversation_id, data)
-    raise ReplyError("unsupported agent: " + agent)
+        return _claude_replies(path, conversation_id, data, truncated_prefix)
+    return _codex_replies(path, conversation_id, data)
 
 
 def register_binding(

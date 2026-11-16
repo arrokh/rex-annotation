@@ -87,9 +87,10 @@ See [required tools](setup.md#required-tools) for installation details.
   to your agent, which may persist it under that agent's own history settings.
 - Agent reply readers export assistant-visible text only. They exclude hidden
   reasoning, user messages, system instructions, tools, images, and extension state.
-- Pi replies cap at **4 MiB and 5,000 replies**. Native transcript inputs cap at
-  **4 MiB and 5,000 records before filtering**. Terminal snapshots cap at 4 MiB.
-  Oversized input fails visibly instead of returning partial history.
+- Pi replies cap at **4 MiB and 5,000 replies**. Native readers load at most the
+  latest **4 MiB and 5,000 transcript records** (plus Codex session metadata);
+  older history is skipped. Oversized individual records fail visibly. Terminal
+  snapshots cap at 4 MiB.
 - Native registrations store private IDs, paths, and process identity, not copied
   replies or feedback. Pi uses a private UID/PID-local Unix socket.
 - Delivery rechecks the saved Rex pane, process, and conversation. It never
