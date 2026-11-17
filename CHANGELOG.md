@@ -2,6 +2,12 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.1.11
+
+- Return from an opened reply to the reply list with Esc, restoring selection and picker options while confirming before discarding unfinished annotations.
+- Toggle reply line wrapping with `\w` and show the current wrap mode in the statusline.
+- Add regression coverage for back navigation, wrap toggling, and unfinished annotations.
+
 ## 0.1.10
 
 - Read only the latest bounded window of native transcripts, so large session histories do not block recent reply annotations.
