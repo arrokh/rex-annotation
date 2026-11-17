@@ -154,10 +154,31 @@ class ClaudeParallelToolsTests(unittest.TestCase):
         ])
         self.assertEqual([r["text"] for r in self.parse(rows)], ["Before tools.", "After tools. | é猫", "After compaction."])
 
-    def test_real_fork_after_different_tool_results_is_still_rejected(self):
+    def test_last_prompt_leaf_selects_active_branch_after_parallel_tool_results(self):
+        rows = parallel_rows()
+        rows.append(entry("assistant", "other-answer", "result-b", [{"type": "text", "text": "CURRENT BRANCH"}], "different-response"))
+        rows.append({"type": "last-prompt", "sessionId": SESSION, "leafUuid": "other-answer"})
+        result = self.parse(rows)
+        self.assertEqual([reply["text"] for reply in result], ["Before tools.", "CURRENT BRANCH"])
+
+    def test_last_prompt_leaf_projects_through_opaque_records(self):
+        rows = [
+            entry("user", "root", None, [{"type": "text", "text": "Prompt."}]),
+            entry("assistant", "shared", "root", [{"type": "text", "text": "Shared reply."}], "shared-response"),
+            entry("user", "stale-user", "shared", [{"type": "text", "text": "Old branch."}]),
+            entry("assistant", "stale-answer", "stale-user", [{"type": "text", "text": "STALE"}], "stale-response"),
+            entry("user", "active-user", "shared", [{"type": "text", "text": "Current branch."}]),
+            entry("assistant", "active-answer", "active-user", [{"type": "text", "text": "CURRENT"}], "active-response"),
+            entry("attachment", "opaque-leaf", "active-answer"),
+            {"type": "last-prompt", "sessionId": SESSION, "leafUuid": "opaque-leaf"},
+        ]
+        result = self.parse(rows)
+        self.assertEqual([reply["text"] for reply in result], ["Shared reply.", "CURRENT"])
+
+    def test_last_prompt_leaf_at_a_fork_does_not_choose_a_child(self):
         rows = parallel_rows()
         rows.append(entry("assistant", "other-answer", "result-b", [{"type": "text", "text": "STALE BRANCH"}], "different-response"))
-        rows.append({"type": "last-prompt", "sessionId": SESSION, "leafUuid": "other-answer"})
+        rows.append({"type": "last-prompt", "sessionId": SESSION, "leafUuid": "result-b"})
         with self.assertRaisesRegex(replies.ReplyError, "ambiguous active branch"):
             self.parse(rows)
 

@@ -12,7 +12,7 @@ import sys
 import tempfile
 import unicodedata
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Set, Tuple
 
 MAX_TRANSCRIPT_BYTES = 4 * 1024 * 1024
 MAX_TRANSCRIPT_ENTRIES = 5000
@@ -370,13 +370,14 @@ def _claude_main_entry(entry: Dict[str, Any]) -> bool:
     return not entry.get("isSidechain") and not entry.get("teamName")
 
 
-def _validate_claude_graph(entries: List[Dict[str, Any]], allow_truncated_prefix: bool = False) -> None:
-    """Prove a single conversation, allowing typed parallel-tool fan-out only.
+def _validate_claude_graph(entries: List[Dict[str, Any]], allow_truncated_prefix: bool = False) -> Set[str]:
+    """Prove one active conversation, allowing typed parallel-tool fan-out.
 
     Claude streams one assistant record per content block with the same API
     message.id. Each tool_result can point to its own call instead of the last
     streamed block. Collapse these explicitly identified response members before
-    checking for forks; never pick a leaf by file order or timestamp.
+    checking for forks. A native last-prompt leaf may select a branch; file order
+    and timestamps never do.
     """
     nodes = {}
     conversation_writers = set()
@@ -447,6 +448,7 @@ def _validate_claude_graph(entries: List[Dict[str, Any]], allow_truncated_prefix
         return ancestor
 
     conversation_parents = {uid: conversation_parent(parents[uid]) for uid in conversation}
+    source_nodes, source_parents = nodes, parents
     nodes, parents = conversation, conversation_parents
     groups = {uid: ("entry", uid) for uid in nodes}
     response_writers = {}
@@ -540,25 +542,82 @@ def _validate_claude_graph(entries: List[Dict[str, Any]], allow_truncated_prefix
         parent_group = groups[parent]
         children.setdefault(parent_group, set()).add(group)
         incoming.setdefault(group, set()).add(parent_group)
-        if len(children[parent_group]) > 1 or len(incoming[group]) > 1:
+        if len(incoming[group]) > 1:
             raise ReplyError("Claude transcript has an ambiguous active branch")
+
     all_groups = set(groups.values())
     roots = all_groups - set(incoming)
-    if all_groups and len(roots) != 1:
-        raise ReplyError("Claude transcript has an ambiguous active branch")
-    reached = set()
-    current = next(iter(roots), None)
-    while current is not None and current not in reached:
-        reached.add(current)
-        current = next(iter(children.get(current, ())), None)
-    if reached != all_groups:
-        raise ReplyError("Claude transcript has a disconnected or cyclic conversation")
+    has_forks = any(len(children_for_parent) > 1 for children_for_parent in children.values())
+    active_groups = all_groups
+    if all_groups and (has_forks or len(roots) != 1):
+        # last-prompt.leafUuid is Claude's persisted active-branch checkpoint.
+        # It can name an opaque record, so follow its parents to the nearest
+        # conversation node. Without a unique path through that checkpoint,
+        # continue to fail closed rather than guessing by append order.
+        marker = next((entry for entry in reversed(entries) if entry.get("type") == "last-prompt"), None)
+        leaf = marker.get("leafUuid") if marker is not None else None
+        try:
+            leaf = _require_token(leaf, "Claude active leaf id", 512) if leaf is not None else None
+        except ReplyError:
+            leaf = None
+        active_group = None
+        current = leaf
+        seen = set()
+        while current is not None and current not in seen:
+            if current in conversation:
+                active_group = groups.get(current)
+                break
+            if current not in source_nodes:
+                break
+            seen.add(current)
+            current = source_parents.get(current)
+        if active_group not in all_groups:
+            raise ReplyError("Claude transcript has an ambiguous active branch")
+
+        group_parents = {child: next(iter(parents_for_child))
+                         for child, parents_for_child in incoming.items() if parents_for_child}
+        ancestors = []
+        current = active_group
+        seen = set()
+        while current is not None:
+            if current in seen:
+                raise ReplyError("Claude transcript has a disconnected or cyclic conversation")
+            seen.add(current)
+            ancestors.append(current)
+            current = group_parents.get(current)
+        active_path = list(reversed(ancestors))
+
+        # The marker can identify the branch before it, but not a later fork.
+        # Extend only through a unique suffix; a second unresolved fork is unsafe.
+        current = active_group
+        while children.get(current):
+            children_after_marker = children[current]
+            if len(children_after_marker) != 1:
+                raise ReplyError("Claude transcript has an ambiguous active branch")
+            current = next(iter(children_after_marker))
+            if current in seen:
+                raise ReplyError("Claude transcript has a disconnected or cyclic conversation")
+            seen.add(current)
+            active_path.append(current)
+        active_groups = set(active_path)
+    elif all_groups:
+        reached = set()
+        current = next(iter(roots), None)
+        while current is not None and current not in reached:
+            reached.add(current)
+            current = next(iter(children.get(current, ())), None)
+        if reached != all_groups:
+            raise ReplyError("Claude transcript has a disconnected or cyclic conversation")
+
+    # Return only IDs on the proven active path; reply parsing still validates
+    # every branch before filtering the visible results.
+    return {uid for uid, group in groups.items() if group in active_groups}
 
 
 def _claude_replies(path: Path, conversation_id: str, data: bytes, truncated_prefix: bool = False) -> List[Dict[str, str]]:
     entries, truncated_by_count = _jsonl_entries(data)
     _claude_session_matches(entries, path, conversation_id)
-    _validate_claude_graph(entries, allow_truncated_prefix=truncated_prefix or truncated_by_count)
+    active_message_ids = _validate_claude_graph(entries, allow_truncated_prefix=truncated_prefix or truncated_by_count)
 
     replies_with_order = []
     used_ids = set()
@@ -596,7 +655,9 @@ def _claude_replies(path: Path, conversation_id: str, data: bytes, truncated_pre
             raise ReplyError("Claude transcript has duplicate assistant reply ids")
         used_ids.add(reply_id)
         timestamp = entry.get("timestamp")
-        replies_with_order.append(_make_reply(reply_id, timestamp, text, order))
+        reply = _make_reply(reply_id, timestamp, text, order)
+        if entry.get("uuid") in active_message_ids:
+            replies_with_order.append(reply)
 
     replies_with_order.sort(key=lambda item: (item[0], item[1]))
     return [reply for _, _, reply in replies_with_order]

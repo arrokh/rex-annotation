@@ -157,7 +157,7 @@ so a delayed old SessionEnd cannot remove a newer session's binding.
   Codex also reads the first session-metadata record. Older history is skipped.
   Malformed, stale, oversized-record, mismatched and control-bearing input fails
   visibly. A truncated Claude prefix is accepted only when its remaining graph
-  still proves one unambiguous conversation chain.
+  and active-leaf marker prove one unambiguous path.
 - Only known assistant-visible blocks are read: Claude `text`, Codex
   `output_text`/`refusal` on visible channels. Hidden analysis/thinking, tools,
   user messages, images, sidechains, summaries and unknown channels are excluded.
@@ -169,9 +169,11 @@ so a delayed old SessionEnd cannot remove a newer session's binding.
   logical conversation chain. Mixed tool-result/context records validate every
   result ID too. Progress, attachments, and explicit compaction links preserve
   graph continuity without exporting their content. Opaque metadata leaves alone
-  are not conversation forks. Genuine forks, duplicate or
-  unresolved identities, and cycles still fail closed; no newest-leaf or
-  timestamp guess is used.
+  are not conversation forks. Claude's latest `last-prompt.leafUuid` can select
+  the active path through a fork, including when it points to an opaque record;
+  replies on other branches are excluded. Missing, stale, or fork-point markers,
+  unresolved identities, and cycles still fail closed. No file-order or timestamp
+  guess is used.
 - Multiple Codex rollback/fork files and rollouts with a `thread_rolled_back`
   event fail closed; undone replies are not exported as current history. These
   adapters do not claim Pi's in-memory active-branch API. Native transcript
