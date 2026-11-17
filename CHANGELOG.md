@@ -2,6 +2,11 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.1.12
+
+- Use Claude's persisted `last-prompt.leafUuid` to select a provable active branch, including opaque checkpoints; unresolved forks still fail closed.
+- Add regression coverage for active-branch selection and stale-reply exclusion.
+
 ## 0.1.11
 
 - Return from an opened reply to the reply list with Esc, restoring selection and picker options while confirming before discarding unfinished annotations.
