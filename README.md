@@ -28,6 +28,15 @@ hook-disable and organization policies are respected.
 Already installed? See [upgrade steps](docs/homebrew.md#install-or-upgrade).
 Prefer a checkout? See [source setup](docs/setup.md#source-checkout).
 
+## Video walkthrough
+
+[![Watch the 38-second silent walkthrough][demo-cover]][demo-video]
+
+[demo-cover]: docs/assets/rex-annotation-demo-cover.png
+[demo-video]: docs/assets/rex-annotation-demo.mp4
+
+Synthetic replies only; no agent session or model request is started.
+
 ## Use
 
 1. Start `pi`, `codex`, `claude`, or `cux` normally in a Rex pane after setup.
