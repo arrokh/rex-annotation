@@ -10,7 +10,9 @@
 1. Start your agent normally in a Rex pane after [setup](setup.md).
 2. Press **Ctrl+S, then o** to open the reply picker.
 3. Use `j`/`k` or `/` search, then **Enter** to open a reply. Newest replies are
-   first. Rows show a compact relative time and preview, not internal IDs.
+   first. Rows show a compact relative time and preview, not internal IDs. Press
+   **Esc** in a reply to return to the list; unfinished annotations require
+   confirmation before they are discarded.
 4. Select a quote with `v` or `V`, then **Enter** to write a comment. Without a
    selection, Enter uses the current logical line, including a hard newline
    when one exists.
@@ -28,6 +30,8 @@ restores source focus only if you have not deliberately moved elsewhere.
 | --- | --- | --- |
 | Reply picker | `j` / `k`, `/`, Enter | Move, search, and open a reply |
 | Reply view | `hjkl`, `w` / `b`, `/` | Native Vim movement and search |
+| Reply view | `\w` | Toggle line wrapping on/off |
+| Reply view | `Esc` | Return to the reply list; confirm before discarding unfinished annotations |
 | Reply view | `v` / `V`, then Enter | Comment on characters / logical lines |
 | Reply view | Enter without a selection | Comment on the current logical line |
 | Comment editor | `Ctrl+S` | Save a multiline comment |

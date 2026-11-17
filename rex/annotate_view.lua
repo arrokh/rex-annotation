@@ -34,7 +34,7 @@ local function guarded(fn)
   end
 end
 
-function M.open(snapshot, target, services, source_title)
+function M.open(snapshot, target, services, source_title, on_back)
   vim.o.modeline = false
   vim.o.shada = ""
   vim.o.backup = false
@@ -88,7 +88,10 @@ function M.open(snapshot, target, services, source_title)
     local width = math.max(1, vim.api.nvim_win_get_width(header_win))
     local help = wrap_cells(tostring(source_title or "SNAPSHOT"), width)
     local line = ""
-    for _, action in ipairs({ "v/V select", "Enter note", "m edit", "p preview", "y copy", "s insert", "S send now", "q close" }) do
+    local actions = { "v/V select", "Enter note", "m edit", "p preview", "y copy", "s insert", "S send now", "\\w wrap" }
+    if on_back then actions[#actions + 1] = "Esc list" end
+    actions[#actions + 1] = "q close"
+    for _, action in ipairs(actions) do
       local candidate = line == "" and action or (line .. " · " .. action)
       if vim.fn.strdisplaywidth(candidate) <= width then
         line = candidate
@@ -109,6 +112,12 @@ function M.open(snapshot, target, services, source_title)
     vim.api.nvim_win_set_cursor(header_win, { 1, 0 })
   end
   vim.api.nvim_create_autocmd({ "VimResized", "WinResized" }, { group = group, callback = refresh_header })
+  local function refresh_status()
+    if not vim.api.nvim_win_is_valid(win) then return end
+    local wrap_state = vim.wo[win].wrap and "wrap" or "nowrap"
+    vim.wo[win].statusline = " Rex Annotate · " .. #draft.notes .. " notes · "
+      .. statusline_text(target.block_id) .. " · " .. wrap_state .. " %=%l:%c "
+  end
   local function refresh()
     vim.api.nvim_buf_clear_namespace(source, ns, 0, -1)
     for _, note in ipairs(draft.notes) do
@@ -129,25 +138,30 @@ function M.open(snapshot, target, services, source_title)
     end
     vim.wo[win].winbar = ""
     refresh_header()
-    vim.wo[win].statusline = " Rex Annotate · " .. #draft.notes .. " notes · " .. statusline_text(target.block_id) .. " %=%l:%c "
+    refresh_status()
   end
   local function discard(message)
     return vim.fn.confirm(message, "&Keep editing\n&Discard", 1) == 2
   end
   function session:payload() return draft:format() end
-  function session:close(force)
+  function session:close(force, back_to_list)
     if closed then return true end
+    if back_to_list and not on_back then return false end
     if not force and (draft.dirty or editor) and not discard("Discard unfinished annotations?") then return false end
+    if back_to_list and not on_back() then
+      notify("Reply list is no longer available")
+      return false
+    end
     closed = true
     vim.api.nvim_del_augroup_by_id(group)
-    if vim.api.nvim_win_is_valid(win) and vim.api.nvim_buf_is_valid(source) then
+    if not back_to_list and vim.api.nvim_win_is_valid(win) and vim.api.nvim_buf_is_valid(source) then
       vim.api.nvim_win_set_buf(win, source)
     end
     if vim.api.nvim_win_is_valid(header_win) then vim.api.nvim_win_close(header_win, true) end
     for _, buf in ipairs({ editor or false, preview or false, header, source }) do
       if buf and vim.api.nvim_buf_is_valid(buf) then vim.api.nvim_buf_delete(buf, { force = true }) end
     end
-    if services.quit then services.quit() end
+    if not back_to_list and services.quit then services.quit() end
     return true
   end
   local function deliver(kind)
@@ -280,10 +294,17 @@ function M.open(snapshot, target, services, source_title)
     mapping(buf, "n", "s", guarded(function() deliver("insert") end))
     mapping(buf, "n", "S", guarded(function() deliver("send") end))
   end
+  mapping(source, "n", "\\w", guarded(function()
+    vim.wo[win].wrap = not vim.wo[win].wrap
+    refresh_status()
+  end))
   mapping(source, "n", "p", guarded(preview_payload))
   mapping(source, "n", "y", guarded(function() deliver("copy") end))
   mapping(source, "n", "s", guarded(function() deliver("insert") end))
   mapping(source, "n", "S", guarded(function() deliver("send") end))
+  if on_back then
+    mapping(source, "n", "<Esc>", guarded(function() session:close(false, true) end))
+  end
   mapping(source, "n", "q", function() session:close() end)
   vim.api.nvim_create_autocmd("QuitPre", { group = group, callback = function()
     if draft.dirty or editor then
@@ -378,9 +399,28 @@ function M.pick_replies(replies, target, services, agent_title)
   local function open_reply(row)
     local reply = by_row[row]
     assert(reply, "Select an assistant reply first")
-    vim.api.nvim_buf_delete(buf, { force = true })
+    local selected_cursor = vim.api.nvim_win_get_cursor(win)
+    local picker_options = {
+      wrap = vim.wo[win].wrap,
+      number = vim.wo[win].number,
+      cursorline = vim.wo[win].cursorline,
+      winbar = vim.wo[win].winbar,
+      statusline = vim.wo[win].statusline,
+    }
+    local function on_back()
+      if not vim.api.nvim_win_is_valid(win) or not vim.api.nvim_buf_is_valid(buf) then return false end
+      vim.api.nvim_win_set_buf(win, buf)
+      vim.wo[win].wrap = picker_options.wrap
+      vim.wo[win].number = picker_options.number
+      vim.wo[win].cursorline = picker_options.cursorline
+      vim.wo[win].winbar = picker_options.winbar
+      vim.wo[win].statusline = picker_options.statusline
+      vim.api.nvim_win_set_cursor(win, selected_cursor)
+      vim.api.nvim_set_current_win(win)
+      return true
+    end
     local source_title = agent_title == "Pi" and "PI REPLY" or agent_title .. " REPLY"
-    picker.editor = M.open(reply.text, target, services, source_title)
+    picker.editor = M.open(reply.text, target, services, source_title, on_back)
     return picker.editor
   end
   mapping(buf, "n", "<CR>", guarded(function()

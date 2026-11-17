@@ -90,11 +90,13 @@ end)
 test("reply picker shows relative time and preview without IDs or absolute dates, then opens exact text", function()
   local view = dofile(root .. "annotate_view.lua")
   local target = { session_id = "session:test", block_id = "block:source" }
+  local quits = 0
+  local services = { quit = function() quits = quits + 1 end }
   local picker = view.pick_replies({
     { id = "private-old-id", hash = "deadbeef", timestamp = "invalid timestamp", text = "older reply\nsecond line" },
     { id = "private-latest-id", hash = "facefeed", timestamp = os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() - 125),
       text = "latest exact reply\nwith Unicode é and pipes |" },
-  }, target, {})
+  }, target, services)
   local lines = vim.api.nvim_buf_get_lines(picker.picker, 0, -1, false)
   eq("    2m  latest exact reply", lines[3])
   eq("     ?  older reply", lines[4])
@@ -103,11 +105,82 @@ test("reply picker shows relative time and preview without IDs or absolute dates
   assert(not table.concat(lines, "\n"):find("deadbeef", 1, true))
   assert(not table.concat(lines, "\n"):find("%d%d%d%d%-", 1))
   assert(vim.wo[0].winbar:find("PI REPLIES", 1, true))
+  local picker_options = {
+    wrap = vim.wo[0].wrap,
+    number = vim.wo[0].number,
+    cursorline = vim.wo[0].cursorline,
+    winbar = vim.wo[0].winbar,
+    statusline = vim.wo[0].statusline,
+  }
+  local selected_cursor = vim.api.nvim_win_get_cursor(0)
   vim.fn.feedkeys(vim.keycode("<CR>"), "xt")
   local session = picker.editor
   assert(session)
   eq({ "latest exact reply", "with Unicode é and pipes |" }, vim.api.nvim_buf_get_lines(session.source, 0, -1, false))
-  session:close(true)
+  eq(true, vim.wo[0].wrap)
+  vim.fn.feedkeys("\\w", "xt")
+  eq(false, vim.wo[0].wrap)
+  assert(vim.wo[0].statusline:find("nowrap", 1, true))
+  vim.fn.feedkeys("\\w", "xt")
+  eq(true, vim.wo[0].wrap)
+  assert(vim.wo[0].statusline:find(" · wrap ", 1, true))
+  local help
+  for _, window in ipairs(vim.api.nvim_tabpage_list_wins(0)) do
+    local help_buf = vim.api.nvim_win_get_buf(window)
+    if help_buf ~= session.source and help_buf ~= picker.picker then
+      help = table.concat(vim.api.nvim_buf_get_lines(help_buf, 0, -1, false), "\n")
+    end
+  end
+  assert(help and help:find("Esc list", 1, true))
+  assert(help:find("\\w wrap", 1, true))
+  local back = vim.fn.maparg("<Esc>", "n", false, true)
+  eq(1, back.buffer)
+  assert(type(back.callback) == "function")
+
+  vim.fn.feedkeys(vim.keycode("<Esc>"), "xt")
+  eq(picker.picker, vim.api.nvim_get_current_buf())
+  eq(selected_cursor, vim.api.nvim_win_get_cursor(0))
+  eq(picker_options.wrap, vim.wo[0].wrap)
+  eq(picker_options.number, vim.wo[0].number)
+  eq(picker_options.cursorline, vim.wo[0].cursorline)
+  eq(picker_options.winbar, vim.wo[0].winbar)
+  eq(picker_options.statusline, vim.wo[0].statusline)
+  eq(false, vim.api.nvim_buf_is_valid(session.source))
+  eq(0, quits)
+  vim.fn.feedkeys("q", "xt")
+  eq(1, quits)
+  vim.api.nvim_buf_delete(picker.picker, { force = true })
+end)
+
+test("reply view back confirms before discarding unfinished annotations", function()
+  local view = dofile(root .. "annotate_view.lua")
+  local quits = 0
+  local picker = view.pick_replies({ { timestamp = "invalid", text = "reply" } },
+    { block_id = "b" }, { quit = function() quits = quits + 1 end })
+  vim.fn.feedkeys(vim.keycode("<CR>"), "xt")
+  local session = picker.editor
+  session.draft:add("reply", "note", { 1, 0, 1, 5, mode = "v" })
+
+  local original_confirm = vim.fn.confirm
+  local prompt
+  vim.fn.confirm = function(message) prompt = message; return 1 end
+  eq(false, session:close(false, true))
+  vim.fn.confirm = original_confirm
+  eq("Discard unfinished annotations?", prompt)
+  eq(session.source, vim.api.nvim_get_current_buf())
+  eq(true, vim.api.nvim_buf_is_valid(session.source))
+  eq(true, vim.api.nvim_buf_is_valid(picker.picker))
+
+  vim.fn.confirm = function(message) prompt = message; return 2 end
+  eq(true, session:close(false, true))
+  vim.fn.confirm = original_confirm
+  eq("Discard unfinished annotations?", prompt)
+  eq(picker.picker, vim.api.nvim_get_current_buf())
+  eq(false, vim.api.nvim_buf_is_valid(session.source))
+  eq(0, quits)
+  vim.fn.feedkeys("q", "xt")
+  eq(1, quits)
+  vim.api.nvim_buf_delete(picker.picker, { force = true })
 end)
 
 test("reply picker supports another agent title and human-friendly future timestamps", function()
@@ -293,7 +366,7 @@ test("detail help remains complete through resize without changing snapshot byte
     for _, line in ipairs(header_lines) do
       assert(vim.fn.strdisplaywidth(line) <= vim.api.nvim_win_get_width(header_win), "header line is horizontally clipped")
     end
-    for _, help in ipairs({ "v/V select", "Enter note", "m edit", "p preview", "y copy", "s insert", "S send now", "q close" }) do
+    for _, help in ipairs({ "v/V select", "Enter note", "m edit", "p preview", "y copy", "s insert", "S send now", "\\w wrap", "q close" }) do
       assert(rendered:find(help, 1, true), "missing header action " .. help)
     end
     assert(vim.api.nvim_win_get_height(header_win) >= 2)
