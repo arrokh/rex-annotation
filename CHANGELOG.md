@@ -2,6 +2,10 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.1.13
+
+- Fix Claude and CUX reply discovery when transcript rows carry different `sessionId` and `session_id` values. The canonical `sessionId` still has to match the bound conversation.
+
 ## 0.1.12
 
 - Use Claude's persisted `last-prompt.leafUuid` to select a provable active branch, including opaque checkpoints; unresolved forks still fail closed.

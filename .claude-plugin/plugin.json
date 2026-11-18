@@ -1,6 +1,6 @@
 {
   "name": "rex-annotation",
-  "version": "0.1.12",
+  "version": "0.1.13",
   "description": "Select exact Claude Code replies in Rex and annotate them with Neovim.",
   "license": "MIT",
   "author": {
