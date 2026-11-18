@@ -354,10 +354,13 @@ def _make_reply(reply_id: str, timestamp: Any, text: str, order: int) -> Tuple[_
 def _claude_session_matches(entries: List[Dict[str, Any]], path: Path, conversation_id: str) -> None:
     seen = set()
     for entry in entries:
-        for key in ("sessionId", "session_id"):
-            value = entry.get(key)
-            if value is not None:
-                seen.add(_require_token(value, "Claude transcript session id", 512))
+        # Claude JSONL can carry both fields with different values. sessionId
+        # identifies the transcript row; session_id is only a fallback.
+        value = entry.get("sessionId")
+        if value is None:
+            value = entry.get("session_id")
+        if value is not None:
+            seen.add(_require_token(value, "Claude transcript session id", 512))
     if seen and seen != {conversation_id}:
         raise ReplyError("Claude transcript session id does not match the active binding")
     if not seen and path.stem != conversation_id:

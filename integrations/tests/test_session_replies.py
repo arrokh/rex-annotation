@@ -163,6 +163,31 @@ class SessionRepliesTests(unittest.TestCase):
             with self.assertRaisesRegex(replies.ReplyError, "no active reply binding"):
                 replies._verified_binding("codex", 987654, "rex-session", "b1", CODEX_ID)
 
+    def test_claude_transcript_session_id_precedence(self):
+        path = Path(self.transcript_copy("claude_session.jsonl", CLAUDE_ID + ".jsonl"))
+        rows = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+        # The real mismatch affected assistant rows even with other matching rows.
+        assistant = rows[1].copy()
+        del assistant["sessionId"]
+        mismatch = "does not match the active binding"
+        for fields, error in (
+            ({"sessionId": CLAUDE_ID, "session_id": "other-id"}, None),
+            ({"session_id": CLAUDE_ID}, None),
+            ({"sessionId": None, "session_id": CLAUDE_ID}, None),
+            ({"sessionId": "other-id", "session_id": CLAUDE_ID}, mismatch),
+            ({"session_id": "other-id"}, mismatch),
+            ({"sessionId": 123, "session_id": CLAUDE_ID}, "Claude transcript session id"),
+        ):
+            with self.subTest(fields=fields):
+                rows[1] = {**assistant, **fields}
+                path.write_text("".join(json.dumps(row) + "\n" for row in rows), encoding="utf-8")
+                if error is None:
+                    parsed = replies._parse_transcript("claude", str(path), CLAUDE_ID)
+                    self.assertEqual([reply["text"] for reply in parsed], ["First answer.", "Second answer."])
+                else:
+                    with self.assertRaisesRegex(replies.ReplyError, error):
+                        replies._parse_transcript("claude", str(path), CLAUDE_ID)
+
     def test_claude_mismatched_session_and_ambiguous_branch_fail(self):
         path = self.transcript_copy("claude_session.jsonl", "other-session.jsonl")
         data = Path(path).read_text(encoding="utf-8").replace(CLAUDE_ID, "different-session")
