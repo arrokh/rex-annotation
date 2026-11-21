@@ -82,6 +82,11 @@ function M.open(snapshot, target, services, source_title, on_back)
   vim.wo[win].wrap = true
   vim.wo[win].number = true
   vim.wo[win].cursorline = true
+  if on_back then
+    vim.wo[win].conceallevel = 2
+    -- Reveal Markdown delimiters on the active line in Visual mode.
+    vim.wo[win].concealcursor = "n"
+  end
   local ns = vim.api.nvim_create_namespace("rex-annotate")
   local draft = core.draft(target.block_id)
   local session = { source = source, draft = draft, namespace = ns }
@@ -547,6 +552,8 @@ function M.pick_replies(replies, target, services, agent_title)
       wrap = vim.wo[win].wrap,
       number = vim.wo[win].number,
       cursorline = vim.wo[win].cursorline,
+      conceallevel = vim.wo[win].conceallevel,
+      concealcursor = vim.wo[win].concealcursor,
       winbar = vim.wo[win].winbar,
       statusline = vim.wo[win].statusline,
     }
@@ -556,6 +563,8 @@ function M.pick_replies(replies, target, services, agent_title)
       vim.wo[win].wrap = picker_options.wrap
       vim.wo[win].number = picker_options.number
       vim.wo[win].cursorline = picker_options.cursorline
+      vim.wo[win].conceallevel = picker_options.conceallevel
+      vim.wo[win].concealcursor = picker_options.concealcursor
       vim.wo[win].winbar = picker_options.winbar
       vim.wo[win].statusline = picker_options.statusline
       vim.api.nvim_win_set_cursor(win, selected_cursor)

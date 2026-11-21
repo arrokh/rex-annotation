@@ -357,6 +357,29 @@ test("Markdown styling preserves reply bytes and fenced code takes precedence", 
   session:close(true)
 end)
 
+test("Markdown reply decorates inline links, code, and tables without changing quotes", function()
+  local view = dofile(root .. "annotate_view.lua")
+  local first = "**[Rex](https://example.com/) avec `é猫`**"
+  local snapshot = first .. "\n\n| Key | Action |\n| --- | --- |\n| `Enter` | Save |"
+  local session = view.open(snapshot, { block_id = "b" }, {}, "REPLY", function() return true end)
+  local ns = vim.api.nvim_get_namespaces()["rex-annotate-markdown"]
+  local styles, hidden, aligned = {}, 0, false
+  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(session.source, ns, 0, -1, { details = true })) do
+    local details = mark[4]
+    if mark[2] == 0 then
+      styles[details.hl_group] = true
+      if details.conceal ~= nil then hidden = hidden + 1 end
+    elseif details.virt_text_pos == "inline" then aligned = true end
+  end
+  assert(styles.RexMarkdownLink and styles.RexMarkdownHeading and styles.RexMarkdownInlineCode)
+  assert(hidden >= 6 and aligned)
+  eq(2, vim.wo.conceallevel)
+  vim.fn.feedkeys("ggV" .. vim.keycode("<CR><C-y>"), "xt")
+  assert(session:payload():find(first, 1, true))
+  eq(snapshot, table.concat(vim.api.nvim_buf_get_lines(session.source, 0, -1, false), "\n"))
+  session:close(true)
+end)
+
 test("annotated spans use exact UTF-8 byte ranges and linewise ranges include newline", function()
   local view = dofile(root .. "annotate_view.lua")
   local session = view.open("é猫 tail\nsecond\nlast", { block_id = "b" }, {})

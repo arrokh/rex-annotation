@@ -23,7 +23,7 @@
    comments. Vim’s active selection keeps its own highlight.
 6. Preview with `p`, copy with `y`, insert with `Shift+Enter`, or Send with `Ctrl+Enter`.
 
-Reply detail styles Markdown headings, lists, quotes, and fenced code in the terminal. Markdown markers remain visible so what you select is exactly what you quote.
+Reply detail styles Markdown headings, lists, quotes, fenced code, simple inline formatting, and pipe tables. In Normal mode, supported inline delimiters and link destinations are hidden for reading. Visual mode reveals them on the active line; annotations still quote the original Markdown.
 
 The pane is centered and keeps the source pane's width. Its help header wraps
 on narrow panes without changing the reply text or quote positions. Closing it
