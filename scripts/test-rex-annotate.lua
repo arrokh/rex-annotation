@@ -3,7 +3,7 @@ local root = vim.fn.getcwd() .. "/rex/"
 local core = dofile(root .. "annotate_core.lua")
 local passed = 0
 local function test(name, run)
-  local ok, err = pcall(run)
+  local ok, err = xpcall(run, debug.traceback)
   if not ok then error(name .. ": " .. tostring(err), 0) end
   passed = passed + 1
   print("PASS " .. name)
@@ -324,6 +324,73 @@ test("annotated spans use exact UTF-8 byte ranges and linewise ranges include ne
   session:close(true)
 end)
 
+test("comment displays the exact read-only quote and saves Yes or No without delivery", function()
+  local view = dofile(root .. "annotate_view.lua")
+  local deliveries = 0
+  local function deliver() deliveries = deliveries + 1 end
+  local session = view.open("é猫 tail\nsecond\nthird\nfourth\nfifth", { block_id = "b" },
+    { copy = deliver, insert = deliver, send = deliver })
+  local base_windows = #vim.api.nvim_list_wins()
+  vim.fn.feedkeys("ggVjjjj" .. vim.keycode("<CR><Esc>"), "xt")
+  local modal, quote, quote_win = vim.api.nvim_get_current_win()
+  for _, candidate in ipairs(vim.api.nvim_list_wins()) do
+    if vim.api.nvim_win_get_config(candidate).relative ~= "" and candidate ~= modal then
+      quote, quote_win = vim.api.nvim_win_get_buf(candidate), candidate
+    end
+  end
+  assert(quote)
+  eq({ "é猫 tail", "second", "third", "fourth", "fifth" }, vim.api.nvim_buf_get_lines(quote, 0, -1, false))
+  eq(false, vim.bo[quote].modifiable)
+  eq({ "" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
+  local width, height = vim.o.columns, vim.o.lines
+  vim.o.columns, vim.o.lines = 34, 16
+  vim.api.nvim_exec_autocmds("VimResized", {})
+  eq(30, vim.api.nvim_win_get_width(modal))
+  eq(30, vim.api.nvim_win_get_width(quote_win))
+  local function topline() return vim.api.nvim_win_call(quote_win, function() return vim.fn.line("w0") end) end
+  eq(1, topline())
+  vim.fn.feedkeys(vim.keycode("<PageDown>"), "xt")
+  assert(topline() > 1, "quote must scroll independently")
+  eq(modal, vim.api.nvim_get_current_win())
+  vim.o.columns, vim.o.lines = width, height
+  vim.api.nvim_exec_autocmds("VimResized", {})
+  vim.fn.feedkeys(vim.keycode("<C-y>"), "xt")
+  eq(base_windows, #vim.api.nvim_list_wins())
+  eq(false, vim.api.nvim_buf_is_valid(quote))
+  vim.fn.feedkeys("ggvl" .. vim.keycode("<CR><C-n>"), "xt")
+  assert(session:payload():find("Comment:\nYes", 1, true))
+  assert(session:payload():find("> é猫\n\nComment:\nNo", 1, true))
+  eq(0, deliveries)
+  session:close(true)
+end)
+
+test("jump follows document order, wraps, and edits the jumped note even at a shared start", function()
+  local view = dofile(root .. "annotate_view.lua")
+  local session = view.open("αβ gamma\nmiddle\nlast", { block_id = "b" }, {})
+  vim.fn.feedkeys("G" .. vim.keycode("<CR><C-y>"), "xt")
+  vim.fn.feedkeys("ggvl" .. vim.keycode("<CR><C-n>"), "xt")
+  vim.fn.feedkeys("ggvwl" .. vim.keycode("<CR><C-y>"), "xt")
+  vim.fn.feedkeys("G0[a", "xt")
+  eq({ 1, 0 }, vim.api.nvim_win_get_cursor(0))
+  vim.fn.feedkeys("\\e" .. vim.keycode("<Esc>"), "xt")
+  eq({ "Yes" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
+  vim.fn.feedkeys("0Cchanged" .. vim.keycode("<C-s>"), "xt")
+  vim.fn.feedkeys("[a", "xt")
+  eq({ 1, 0 }, vim.api.nvim_win_get_cursor(0))
+  vim.fn.feedkeys("\\e" .. vim.keycode("<Esc>"), "xt")
+  eq({ "No" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
+  vim.fn.feedkeys("q[a", "xt")
+  eq({ 3, 0 }, vim.api.nvim_win_get_cursor(0))
+  vim.fn.feedkeys("]a", "xt")
+  eq({ 1, 0 }, vim.api.nvim_win_get_cursor(0))
+  assert(session:payload():find("Comment:\nchanged", 1, true))
+  local base_windows = #vim.api.nvim_list_wins()
+  vim.fn.feedkeys("\\e" .. vim.keycode("<Esc>"), "xt")
+  eq(base_windows + 2, #vim.api.nvim_list_wins())
+  session:close(true)
+  eq(base_windows - 1, #vim.api.nvim_list_wins())
+end)
+
 test("saved annotations use explicit yellow with dark text without changing active selection", function()
   local view = dofile(root .. "annotate_view.lua")
   local visual = vim.api.nvim_get_hl(0, { name = "Visual", link = false })
@@ -366,7 +433,7 @@ test("detail help remains complete through resize without changing snapshot byte
     for _, line in ipairs(header_lines) do
       assert(vim.fn.strdisplaywidth(line) <= vim.api.nvim_win_get_width(header_win), "header line is horizontally clipped")
     end
-    for _, help in ipairs({ "v/V select", "Enter note", "m edit", "p preview", "y copy", "s insert", "S send now", "\\w wrap", "q close" }) do
+    for _, help in ipairs({ "v/V select", "Enter note", "[a/]a jump", "\\e edit", "m manage", "p preview", "y copy", "s insert", "S send now", "\\w wrap", "q close" }) do
       assert(rendered:find(help, 1, true), "missing header action " .. help)
     end
     assert(vim.api.nvim_win_get_height(header_win) >= 2)
@@ -389,7 +456,7 @@ test("normal Enter opens the current logical line as a newline-inclusive default
   local header_lines = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(header_win), 0, -1, false)
   eq("Codex% REPLY", header_lines[1])
   local help = table.concat(header_lines, "\n")
-  for _, action in ipairs({ "v/V select", "Enter note", "m edit", "p preview", "y copy", "s insert", "S send now", "q close" }) do
+  for _, action in ipairs({ "v/V select", "Enter note", "[a/]a jump", "\\e edit", "m manage", "p preview", "y copy", "s insert", "S send now", "q close" }) do
     assert(help:find(action, 1, true), action)
   end
   assert(vim.wo[0].statusline:find("block%%source", 1, true))
