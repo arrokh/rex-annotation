@@ -80,7 +80,7 @@ test('socket binds exact pane and current session; insert preserves newlines wit
     assert.deepEqual(replies.replies, [{ id: 'reply-1', timestamp: '', text: '| a | b |\n|---|---|\n| 1 | 2 |' }]);
     const status = await request(bridge.path, { ...binding, op: 'status' });
     assert.equal(status.ok, true); assert.equal(status.sessionId, session); assert.equal(status.text, undefined);
-    const payload = '# Terminal annotations\n\n> a | b\n\nComment:\nhi there';
+    const payload = '# Terminal annotations\n\n> a | b\n\nFeedback: hi there';
     assert.equal((await request(bridge.path, { ...binding, op: 'insert', sessionId: session, text: payload })).ok, true);
     assert.equal(editor, 'existing draft\n' + payload);
     assert.equal((await request(bridge.path, { ...binding, op: 'send', sessionId: session, text: payload })).ok, true);

@@ -41,7 +41,7 @@ Synthetic replies only; no agent session or model request is started.
 
 1. Start `pi`, `codex`, `claude`, or `cux` normally in a Rex pane after setup.
 2. Press **Ctrl+S, then o**. Pick a reply with `j`/`k` and **Enter**.
-3. Select a quote with `v` or `V`, then **Enter** to comment. **Ctrl+S** saves the
+3. Select a quote with `v` or `V`, then **Enter** to comment. **Ctrl+Enter** saves the
    comment. Enter without a selection comments on the current logical line.
 4. Choose what to do with the feedback:
 
