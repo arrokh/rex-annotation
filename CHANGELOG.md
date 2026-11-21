@@ -2,6 +2,10 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.2
+
+- Render simple bold, inline code, and links in terminal reply detail, and align simple Markdown tables. Preserve the original Markdown when quoting or annotating.
+
 ## 0.2.1
 
 - Style Markdown headings, list markers, quotations, and fenced code directly in terminal reply detail without changing the quoted text.
