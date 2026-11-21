@@ -493,6 +493,7 @@ def _validate_claude_graph(entries: List[Dict[str, Any]], allow_truncated_prefix
             tool_owners[call] = uid
 
     results = {}
+    boundary_roots = set(external_parents.values())
     answered = set()
     for uid, entry in nodes.items():
         message = entry.get("message")
@@ -506,15 +507,24 @@ def _validate_claude_graph(entries: List[Dict[str, Any]], allow_truncated_prefix
         for block in tool_results:
             call = _require_token(block.get("tool_use_id"), "Claude tool result id", 512)
             owner = tool_owners.get(call)
-            if owner is None or writer(entry) != writer(nodes[owner]) or message.get("role") != "user":
+            # At the tail boundary the parent and its call may both be
+            # outside the read window. Keep the result as a standalone,
+            # non-exported node; never invent an owner in retained history.
+            if owner is None and parents[uid] in boundary_roots and message.get("role") == "user":
+                group = groups[uid]
+            elif owner is None or writer(entry) != writer(nodes[owner]) or message.get("role") != "user":
                 raise ReplyError("Claude tool result has no matching response")
+            else:
+                group = groups[owner]
             if call in answered:
                 raise ReplyError("Claude transcript repeats a tool result")
             answered.add(call)
-            owners.add(groups[owner])
+            owners.add(group)
         if len(owners) != 1:
             raise ReplyError("Claude tool result spans different responses")
         response_group = owners.pop()
+        if response_group == groups[uid]:
+            continue  # All calls were outside the retained transcript.
         results[uid] = response_group
         # Native tool-result messages can also contain text/image context.
         # Their matched call IDs establish provenance, not block purity. A user
