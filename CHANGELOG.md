@@ -2,6 +2,11 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.1.15
+
+- Jump between annotations with `n` and `N`. Repeat Vim searches with `\n` and `\N` in reply detail.
+- Use muted sage, rose, and slate-blue highlights for Yes, No, and other comments.
+
 ## 0.1.14
 
 - Show the exact selected quote in a scrollable, read-only preview when creating or editing a comment.

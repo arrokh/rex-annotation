@@ -317,9 +317,9 @@ test("annotated spans use exact UTF-8 byte ranges and linewise ranges include ne
     if mark[4].hl_group then spans[#spans + 1] = mark end
   end
   eq(2, #spans)
-  eq({ 0, 0, 0, 5, "RexAnnotationSpan" }, { spans[1][2], spans[1][3], spans[1][4].end_row,
+  eq({ 0, 0, 0, 5, "RexAnnotationComment" }, { spans[1][2], spans[1][3], spans[1][4].end_row,
     spans[1][4].end_col, spans[1][4].hl_group })
-  eq({ 1, 0, 2, 0, "RexAnnotationSpan" }, { spans[2][2], spans[2][3], spans[2][4].end_row,
+  eq({ 1, 0, 2, 0, "RexAnnotationComment" }, { spans[2][2], spans[2][3], spans[2][4].end_row,
     spans[2][4].end_col, spans[2][4].hl_group })
   session:close(true)
 end)
@@ -370,7 +370,7 @@ test("jump follows document order, wraps, and edits the jumped note even at a sh
   vim.fn.feedkeys("G" .. vim.keycode("<CR><C-y>"), "xt")
   vim.fn.feedkeys("ggvl" .. vim.keycode("<CR><C-n>"), "xt")
   vim.fn.feedkeys("ggvwl" .. vim.keycode("<CR><C-y>"), "xt")
-  vim.fn.feedkeys("G0[a", "xt")
+  vim.fn.feedkeys("G0N", "xt")
   eq({ 1, 0 }, vim.api.nvim_win_get_cursor(0))
   vim.fn.feedkeys("\\e" .. vim.keycode("<Esc>"), "xt")
   eq({ "Yes" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
@@ -379,9 +379,9 @@ test("jump follows document order, wraps, and edits the jumped note even at a sh
   eq({ 1, 0 }, vim.api.nvim_win_get_cursor(0))
   vim.fn.feedkeys("\\e" .. vim.keycode("<Esc>"), "xt")
   eq({ "No" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
-  vim.fn.feedkeys("q[a", "xt")
+  vim.fn.feedkeys("qN", "xt")
   eq({ 3, 0 }, vim.api.nvim_win_get_cursor(0))
-  vim.fn.feedkeys("]a", "xt")
+  vim.fn.feedkeys("n", "xt")
   eq({ 1, 0 }, vim.api.nvim_win_get_cursor(0))
   assert(session:payload():find("Comment:\nchanged", 1, true))
   local base_windows = #vim.api.nvim_list_wins()
@@ -391,26 +391,52 @@ test("jump follows document order, wraps, and edits the jumped note even at a sh
   eq(base_windows - 1, #vim.api.nvim_list_wins())
 end)
 
-test("saved annotations use explicit yellow with dark text without changing active selection", function()
+test("note colors pair each quote and label, update on edit, and leave Visual alone", function()
   local view = dofile(root .. "annotate_view.lua")
   local visual = vim.api.nvim_get_hl(0, { name = "Visual", link = false })
-  local snapshot = "highlight this quote"
-  local session = view.open(snapshot, { block_id = "yellow-test" }, {})
-  vim.fn.feedkeys("ggV" .. vim.keycode("<CR>") .. "visible note" .. vim.keycode("<C-s>"), "xt")
-  for _, name in ipairs({ "RexAnnotationSpan", "RexAnnotationNote" }) do
-    local color = vim.api.nvim_get_hl(0, { name = name, link = false })
-    eq(0xf5c542, color.bg)
-    eq(0x1b1b1b, color.fg)
-    eq(true, color.bold)
+  local snapshot = "one\ntwo\nthree"
+  local session = view.open(snapshot, { block_id = "palette-test" }, {})
+  vim.fn.feedkeys("gg0" .. vim.keycode("<CR><C-y>") .. "j" .. vim.keycode("<CR><C-n>")
+    .. "j" .. vim.keycode("<CR>") .. "Yes, explain why" .. vim.keycode("<C-s>"), "xt")
+  local function groups()
+    local spans, labels = {}, {}
+    for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(session.source, session.namespace, 0, -1, { details = true })) do
+      if mark[4].hl_group then spans[#spans + 1] = mark[4].hl_group end
+      if mark[4].virt_text then labels[#labels + 1] = mark[4].virt_text[1][2] end
+    end
+    eq(spans, labels)
+    return spans
   end
+  eq({ "RexAnnotationYes", "RexAnnotationNo", "RexAnnotationComment" }, groups())
+  local original = vim.o.background
+  for _, theme in ipairs({ "dark", "light" }) do
+    vim.o.background = theme
+    vim.api.nvim_exec_autocmds("OptionSet", { pattern = "background" })
+    local colors = {}
+    for _, name in ipairs(groups()) do
+      local style = vim.api.nvim_get_hl(0, { name = name })
+      assert(style.fg and style.bg and style.ctermfg and style.ctermbg)
+      assert(not colors[style.bg], "each note type has its own color")
+      colors[style.bg] = true
+    end
+  end
+  vim.o.background = original
+  vim.fn.feedkeys("gg0\\e" .. vim.keycode("<C-n>"), "xt")
+  eq({ "RexAnnotationNo", "RexAnnotationNo", "RexAnnotationComment" }, groups())
   eq(visual, vim.api.nvim_get_hl(0, { name = "Visual", link = false }))
-  local label
-  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(session.source, session.namespace, 0, -1, { details = true })) do
-    if mark[4].virt_text then label = mark[4].virt_text[1] end
-  end
-  assert(label[1]:find("[1] visible note", 1, true))
-  eq("RexAnnotationNote", label[2])
   eq(snapshot, table.concat(vim.api.nvim_buf_get_lines(session.source, 0, -1, false), "\n"))
+  session:close(true)
+end)
+
+test("detail keeps native forward and backward search on the backslash shortcuts", function()
+  local view = dofile(root .. "annotate_view.lua")
+  local session = view.open("start\nhit\nhit\nhit", { block_id = "b" }, {})
+  vim.fn.feedkeys("gg0/hit" .. vim.keycode("<CR>"), "xt")
+  eq({ 2, 0 }, vim.api.nvim_win_get_cursor(0))
+  vim.fn.feedkeys("2\\n", "xt")
+  eq({ 4, 0 }, vim.api.nvim_win_get_cursor(0))
+  vim.fn.feedkeys("\\N", "xt")
+  eq({ 3, 0 }, vim.api.nvim_win_get_cursor(0))
   session:close(true)
 end)
 
@@ -433,7 +459,7 @@ test("detail help remains complete through resize without changing snapshot byte
     for _, line in ipairs(header_lines) do
       assert(vim.fn.strdisplaywidth(line) <= vim.api.nvim_win_get_width(header_win), "header line is horizontally clipped")
     end
-    for _, help in ipairs({ "v/V select", "Enter note", "[a/]a jump", "\\e edit", "m manage", "p preview", "y copy", "s insert", "S send now", "\\w wrap", "q close" }) do
+    for _, help in ipairs({ "v/V select", "Enter note", "n/N notes", "\\n/\\N search", "\\e edit", "m manage", "p preview", "y copy", "s insert", "S send now", "\\w wrap", "q close" }) do
       assert(rendered:find(help, 1, true), "missing header action " .. help)
     end
     assert(vim.api.nvim_win_get_height(header_win) >= 2)
@@ -456,7 +482,7 @@ test("normal Enter opens the current logical line as a newline-inclusive default
   local header_lines = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(header_win), 0, -1, false)
   eq("Codex% REPLY", header_lines[1])
   local help = table.concat(header_lines, "\n")
-  for _, action in ipairs({ "v/V select", "Enter note", "[a/]a jump", "\\e edit", "m manage", "p preview", "y copy", "s insert", "S send now", "q close" }) do
+  for _, action in ipairs({ "v/V select", "Enter note", "n/N notes", "\\n/\\N search", "\\e edit", "m manage", "p preview", "y copy", "s insert", "S send now", "q close" }) do
     assert(help:find(action, 1, true), action)
   end
   assert(vim.wo[0].statusline:find("block%%source", 1, true))

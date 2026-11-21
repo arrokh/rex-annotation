@@ -19,7 +19,8 @@
 5. The comment editor shows the exact quote above the editable text. Save with
    **Ctrl+S**, or use **Ctrl+Y** / **Ctrl+N** to save `Yes` / `No` without
    typing. These only save a note; they do not send it. Saved quotes and note
-   labels are yellow, separate from the active Vim selection.
+   labels use muted sage for `Yes`, rose for `No`, and slate blue for other
+   comments. Vim’s active selection keeps its own highlight.
 6. Preview with `p`, copy with `y`, insert with `s`, or Send with `S`.
 
 The pane is centered and keeps the source pane's width. Its help header wraps
@@ -40,7 +41,8 @@ restores source focus only if you have not deliberately moved elsewhere.
 | Comment editor | `Ctrl+Y` / `Ctrl+N` | Save `Yes` / `No` in place of the editor text |
 | Comment editor | `PgUp` / `PgDn` | Scroll the read-only quote |
 | Comment editor | Esc, then `q` | Cancel; confirm before discarding edits |
-| Reply view | `[a` / `]a` | Jump to the previous / next annotation in reply order; wraps at the ends |
+| Reply view | `n` / `N` | Jump to the next / previous annotation; wraps at the ends (`]a` / `[a` still work) |
+| Reply view | `\n` / `\N` | Repeat the last Vim search in the same / opposite direction |
 | Reply view | `\e` | Edit the annotation you jumped to or the one under the cursor |
 | Reply view | `m` | Pick a saved note to edit or remove |
 | Reply view | `p` | Preview the exact Markdown; `q` / Esc returns |
