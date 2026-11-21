@@ -234,10 +234,10 @@ test("explicit Send needs no typed confirmation and closes only after success", 
     quit = function() quit = quit + 1 end,
   })
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
-  vim.fn.feedkeys("v4l" .. vim.keycode("<CR>") .. "comment" .. vim.keycode("<C-CR>"), "xt")
+  vim.fn.feedkeys("v4l" .. vim.keycode("<CR>") .. "comment" .. vim.keycode("<CR>"), "xt")
   local input = vim.fn.input
   vim.fn.input = function() error("Send must not request typed confirmation") end
-  vim.fn.feedkeys("S", "xt")
+  vim.fn.feedkeys(vim.keycode("<C-CR>"), "xt")
   vim.fn.input = input
   eq(1, #sent)
   assert(sent[1]:find("comment", 1, true))
@@ -255,7 +255,7 @@ test("Pi draft insertion skips confirmation and auto-closes only after success",
   })
   local confirm = vim.fn.confirm
   vim.fn.confirm = function() error("Pi draft insertion should not ask for confirmation") end
-  local ok, err = pcall(vim.fn.feedkeys, "v4l" .. vim.keycode("<CR>") .. "why" .. vim.keycode("<C-CR>") .. "s", "xt")
+  local ok, err = pcall(vim.fn.feedkeys, "v4l" .. vim.keycode("<CR>") .. "why" .. vim.keycode("<CR>") .. vim.keycode("<S-CR>"), "xt")
   vim.fn.confirm = confirm
   assert(ok, err)
   assert(inserted:find("Feedback: why", 1, true))
@@ -274,7 +274,7 @@ test("failed insert and Send retain notes and leave the overlay open", function(
   })
   session.draft:add("alpha", "keep this note", { 1, 0, 1, 5 })
   local payload = session:payload()
-  vim.fn.feedkeys("sS", "xt")
+  vim.fn.feedkeys(vim.keycode("<S-CR><C-CR>"), "xt")
   eq(payload, session:payload())
   eq(true, vim.api.nvim_buf_is_valid(session.source))
   eq(0, quit)
@@ -294,13 +294,13 @@ test("busy Pi leaves a retry hint without a hit-enter prompt and allows a manual
   })
   session.draft:add("alpha", "keep this note", { 1, 0, 1, 5 })
   local payload = session:payload()
-  vim.fn.feedkeys("ps", "xt")
+  vim.fn.feedkeys("p" .. vim.keycode("<S-CR>"), "xt")
   eq(1, attempts)
   eq(0, quit)
   eq(payload, session:payload())
   assert(vim.wo.statusline:find("Pi busy. Notes kept; retry when idle.", 1, true))
   assert(not vim.wo.statusline:find(".lua", 1, true))
-  vim.fn.feedkeys("s", "xt")
+  vim.fn.feedkeys(vim.keycode("<S-CR>"), "xt")
   eq(2, attempts)
   eq(1, quit)
 end)
@@ -317,7 +317,7 @@ test("non-Pi insertion retains its editable-prompt confirmation", function()
     assert(message:find("editable prompt", 1, true))
     return 1
   end
-  local ok, err = pcall(vim.fn.feedkeys, "s", "xt")
+  local ok, err = pcall(vim.fn.feedkeys, vim.keycode("<S-CR>"), "xt")
   vim.fn.confirm = confirm
   assert(ok, err)
   eq(1, calls)
@@ -331,8 +331,29 @@ test("Vim selection attaches the exact quote and multiline comment in the view",
   local session = view.open("alpha beta\ngamma delta", { session_id = "session:test", block_id = "block:source" }, {})
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
   -- Exercise selection, the real comment editor, and its save mapping in one input stream.
-  vim.fn.feedkeys("v4l" .. vim.keycode("<CR>") .. "why?" .. vim.keycode("<CR>") .. "clarify" .. vim.keycode("<C-CR>"), "xt")
+  vim.fn.feedkeys("v4l" .. vim.keycode("<CR>") .. "why?" .. vim.keycode("<S-CR>") .. "clarify" .. vim.keycode("<CR>"), "xt")
   eq("# Terminal annotations\n\n> alpha\n\nFeedback:\n\n~~~\nwhy?\nclarify\n~~~", session:payload())
+  session:close(true)
+end)
+
+test("Markdown styling preserves reply bytes and fenced code takes precedence", function()
+  local view = dofile(root .. "annotate_view.lua")
+  local snapshot = "# Élan\n- bullet\n> quote\n````lua\n# not a heading\n```\n````\n## Back"
+  local session = view.open(snapshot, { block_id = "b" }, {}, "REPLY", function() return true end)
+  local ns = vim.api.nvim_get_namespaces()["rex-annotate-markdown"]
+  local marks = {}
+  for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(session.source, ns, 0, -1, { details = true })) do
+    local row, style = mark[2] + 1, mark[4].hl_group or mark[4].line_hl_group
+    marks[row] = marks[row] or {}
+    marks[row][style] = true
+  end
+  assert(marks[1].RexMarkdownHeading and marks[2].RexMarkdownMarker and marks[3].RexMarkdownQuote)
+  assert(marks[5].RexMarkdownCode and not marks[5].RexMarkdownHeading)
+  assert(marks[6].RexMarkdownCode and not marks[6].RexMarkdownMarker)
+  assert(marks[8].RexMarkdownHeading)
+  vim.fn.feedkeys("ggV" .. vim.keycode("<CR><C-y>"), "xt")
+  assert(session:payload():find("> # Élan", 1, true))
+  eq(snapshot, table.concat(vim.api.nvim_buf_get_lines(session.source, 0, -1, false), "\n"))
   session:close(true)
 end)
 
@@ -340,10 +361,10 @@ test("annotated spans use exact UTF-8 byte ranges and linewise ranges include ne
   local view = dofile(root .. "annotate_view.lua")
   local session = view.open("é猫 tail\nsecond\nlast", { block_id = "b" }, {})
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
-  vim.fn.feedkeys("vl" .. vim.keycode("<CR>") .. "unicode" .. vim.keycode("<C-CR>"), "xt")
+  vim.fn.feedkeys("vl" .. vim.keycode("<CR>") .. "unicode" .. vim.keycode("<CR>"), "xt")
   eq({ 1, 0, 1, 5 }, vim.list_slice(session.draft.notes[1].range, 1, 4))
   vim.api.nvim_win_set_cursor(0, { 2, 0 })
-  vim.fn.feedkeys("V" .. vim.keycode("<CR>") .. "linewise" .. vim.keycode("<C-CR>"), "xt")
+  vim.fn.feedkeys("V" .. vim.keycode("<CR>") .. "linewise" .. vim.keycode("<CR>"), "xt")
   eq({ 2, 0, 3, 0 }, vim.list_slice(session.draft.notes[2].range, 1, 4))
   assert(session:payload():find("> second\n\nFeedback: linewise", 1, true))
   local spans = {}
@@ -408,7 +429,7 @@ test("jump follows document order, wraps, and edits the jumped note even at a sh
   eq({ 1, 0 }, vim.api.nvim_win_get_cursor(0))
   vim.fn.feedkeys(vim.keycode("<C-e>") .. vim.keycode("<Esc>"), "xt")
   eq({ "Yes" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
-  vim.fn.feedkeys("0Cchanged" .. vim.keycode("<C-CR>"), "xt")
+  vim.fn.feedkeys("0Cchanged" .. vim.keycode("<CR>"), "xt")
   vim.fn.feedkeys("N", "xt")
   eq({ 1, 0 }, vim.api.nvim_win_get_cursor(0))
   vim.fn.feedkeys(vim.keycode("<C-e>") .. vim.keycode("<Esc>"), "xt")
@@ -431,7 +452,7 @@ test("note colors pair each quote and label, update on edit, and leave Visual al
   local snapshot = "one\ntwo\nthree"
   local session = view.open(snapshot, { block_id = "palette-test" }, {})
   vim.fn.feedkeys("gg0" .. vim.keycode("<CR><C-y>") .. "j" .. vim.keycode("<CR><C-n>")
-    .. "j" .. vim.keycode("<CR>") .. "Yes, explain why" .. vim.keycode("<C-CR>"), "xt")
+    .. "j" .. vim.keycode("<CR>") .. "Yes, explain why" .. vim.keycode("<CR>"), "xt")
   local function groups()
     local spans, labels = {}, {}
     for _, mark in ipairs(vim.api.nvim_buf_get_extmarks(session.source, session.namespace, 0, -1, { details = true })) do
@@ -493,7 +514,7 @@ test("detail help remains complete through resize without changing snapshot byte
     for _, line in ipairs(header_lines) do
       assert(vim.fn.strdisplaywidth(line) <= vim.api.nvim_win_get_width(header_win), "header line is horizontally clipped")
     end
-    for _, help in ipairs({ "v/V select", "Enter note", "n/N notes", "\\n/\\N search", "Ctrl+E edit", "m manage", "p preview", "y copy", "s insert", "S send now", "Ctrl+W wrap", "q close" }) do
+    for _, help in ipairs({ "v/V select", "Enter note", "n/N notes", "\\n/\\N search", "Ctrl+E edit", "m manage", "p preview", "y copy", "Shift+Enter insert", "Ctrl+Enter send", "Ctrl+W wrap", "q close" }) do
       assert(rendered:find(help, 1, true), "missing header action " .. help)
     end
     assert(vim.api.nvim_win_get_height(header_win) >= 2)
@@ -516,12 +537,12 @@ test("normal Enter opens the current logical line as a newline-inclusive default
   local header_lines = vim.api.nvim_buf_get_lines(vim.api.nvim_win_get_buf(header_win), 0, -1, false)
   eq("Codex% REPLY", header_lines[1])
   local help = table.concat(header_lines, "\n")
-  for _, action in ipairs({ "v/V select", "Enter note", "n/N notes", "\\n/\\N search", "Ctrl+E edit", "m manage", "p preview", "y copy", "s insert", "S send now", "q close" }) do
+  for _, action in ipairs({ "v/V select", "Enter note", "n/N notes", "\\n/\\N search", "Ctrl+E edit", "m manage", "p preview", "y copy", "Shift+Enter insert", "Ctrl+Enter send", "q close" }) do
     assert(help:find(action, 1, true), action)
   end
   assert(vim.wo[0].statusline:find("block%%source", 1, true))
   vim.api.nvim_win_set_cursor(0, { 2, 0 })
-  vim.fn.feedkeys(vim.keycode("<CR>") .. "explain" .. vim.keycode("<C-CR>"), "xt")
+  vim.fn.feedkeys(vim.keycode("<CR>") .. "explain" .. vim.keycode("<CR>"), "xt")
   eq("current line\n", session.draft.notes[1].quote)
   eq({ 2, 0, 3, 0 }, vim.list_slice(session.draft.notes[1].range, 1, 4))
   session:close(true)
@@ -556,7 +577,7 @@ test("launcher uses explicit source window, local client and an isolated Neovim 
   vim.env.XDG_CONFIG_HOME = vim.fn.getcwd()
   dofile(root .. "annotate.lua")
   eq("annotate_open", bindings["ctrl+s>o"])
-  eq("client.quick_look", bindings["ctrl+s>shift+o"])
+  eq(nil, bindings["ctrl+s>shift+o"])
   eq(nil, bindings["ctrl+s>shift+a"])
   eq(nil, bindings["ctrl+s>a"])
   action.run({ session_id = "session:test", block_id = "block:source", client_id = "client:local" }, {})
@@ -648,9 +669,9 @@ test("V, reversed Unicode selection, search, preview, and explicit copy use the 
     copy = function(payload) copied[#copied + 1] = payload end,
   })
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
-  vim.fn.feedkeys("lvh" .. vim.keycode("<CR>") .. "unicode" .. vim.keycode("<C-CR>"), "xt")
+  vim.fn.feedkeys("lvh" .. vim.keycode("<CR>") .. "unicode" .. vim.keycode("<CR>"), "xt")
   assert(session:payload():find("> é猫", 1, true))
-  vim.fn.feedkeys("/needle" .. vim.keycode("<CR>") .. "V" .. vim.keycode("<CR>") .. "linewise" .. vim.keycode("<C-CR>"), "xt")
+  vim.fn.feedkeys("/needle" .. vim.keycode("<CR>") .. "V" .. vim.keycode("<CR>") .. "linewise" .. vim.keycode("<CR>"), "xt")
   assert(session:payload():find("> needle line\n\nFeedback: linewise", 1, true))
   eq(0, #copied)
   vim.fn.feedkeys("py", "xt")
@@ -676,10 +697,10 @@ test("notes can be edited and removed through the picker without altering quotes
   local view = dofile(root .. "annotate_view.lua")
   local session = view.open("alpha beta", { block_id = "b" }, {})
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
-  vim.fn.feedkeys("v4l" .. vim.keycode("<CR>") .. "first" .. vim.keycode("<C-CR>"), "xt")
+  vim.fn.feedkeys("v4l" .. vim.keycode("<CR>") .. "first" .. vim.keycode("<CR>"), "xt")
   local select = vim.ui.select
   vim.ui.select = function(items, _, callback) callback(items[1]) end
-  vim.fn.feedkeys("m" .. vim.keycode("<Esc>") .. "gg0Cupdated" .. vim.keycode("<C-CR>"), "xt")
+  vim.fn.feedkeys("m" .. vim.keycode("<Esc>") .. "gg0Cupdated" .. vim.keycode("<CR>"), "xt")
   assert(session:payload():find("> alpha\n\nFeedback: updated", 1, true))
   vim.ui.select = function(items, _, callback)
     callback(type(items[1]) == "table" and items[1] or items[2])
@@ -694,7 +715,7 @@ test("discard warning keeps notes open and a failed copy preserves the draft", f
   local view = dofile(root .. "annotate_view.lua")
   local session = view.open("alpha", { block_id = "b" }, { copy = function() error("clipboard unavailable") end })
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
-  vim.fn.feedkeys("v4l" .. vim.keycode("<CR>") .. "note" .. vim.keycode("<C-CR>"), "xt")
+  vim.fn.feedkeys("v4l" .. vim.keycode("<CR>") .. "note" .. vim.keycode("<CR>"), "xt")
   local payload = session:payload()
   vim.fn.feedkeys("y", "xt")
   eq(payload, session:payload())
@@ -717,8 +738,8 @@ test("identical quotes on one line retain distinct byte ranges", function()
   local view = dofile(root .. "annotate_view.lua")
   local session = view.open("same same", { block_id = "b" }, {})
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
-  vim.fn.feedkeys("v3l" .. vim.keycode("<CR>") .. "first" .. vim.keycode("<C-CR>"), "xt")
-  vim.fn.feedkeys("wv3l" .. vim.keycode("<CR>") .. "second" .. vim.keycode("<C-CR>"), "xt")
+  vim.fn.feedkeys("v3l" .. vim.keycode("<CR>") .. "first" .. vim.keycode("<CR>"), "xt")
+  vim.fn.feedkeys("wv3l" .. vim.keycode("<CR>") .. "second" .. vim.keycode("<CR>"), "xt")
   eq({ 1, 0, 1, 4 }, vim.list_slice(session.draft.notes[1].range, 1, 4))
   eq({ 1, 5, 1, 9 }, vim.list_slice(session.draft.notes[2].range, 1, 4))
   session:close(true)
@@ -736,7 +757,7 @@ test("closing a comment window cannot strand the editor or silently lose edits",
   vim.cmd("q!") -- Explicitly discard the comment through the native exit path.
   vim.fn.confirm = confirm
   vim.wait(20, function() return vim.api.nvim_get_current_buf() == session.source end)
-  vim.fn.feedkeys("gv" .. vim.keycode("<CR>") .. "later" .. vim.keycode("<C-CR>"), "xt")
+  vim.fn.feedkeys("gv" .. vim.keycode("<CR>") .. "later" .. vim.keycode("<CR>"), "xt")
   assert(session:payload():find("Feedback: later", 1, true))
   session:close(true)
 end)
@@ -795,10 +816,10 @@ test("copy and insert receive identical multiline Unicode and pipe content", fun
   local session = view.open("a | b\né猫", { block_id = "b" }, {
     copy = function(value) copied = value end, insert = function(value) inserted = value end,
   })
-  vim.fn.feedkeys("gg0Vj" .. vim.keycode("<CR>") .. "note" .. vim.keycode("<CR>") .. "next line" .. vim.keycode("<C-CR>"), "xt")
+  vim.fn.feedkeys("gg0Vj" .. vim.keycode("<CR>") .. "note" .. vim.keycode("<S-CR>") .. "next line" .. vim.keycode("<CR>"), "xt")
   local confirm = vim.fn.confirm
   vim.fn.confirm = function() return 2 end
-  vim.fn.feedkeys("ys", "xt")
+  vim.fn.feedkeys("y" .. vim.keycode("<S-CR>"), "xt")
   vim.fn.confirm = confirm
   eq(session:payload(), copied); eq(copied, inserted)
   assert(inserted:find("a | b", 1, true) and inserted:find("note\nnext line", 1, true))

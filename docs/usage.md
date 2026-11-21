@@ -17,11 +17,13 @@
    selection, Enter uses the current logical line, including a hard newline
    when one exists.
 5. The comment editor shows the exact quote above the editable text. Save with
-   **Ctrl+Enter**, or use **Ctrl+Y** / **Ctrl+N** to save `Yes` / `No` without
+   **Enter** (`Shift+Enter` adds a newline), or use **Ctrl+Y** / **Ctrl+N** to save `Yes` / `No` without
    typing. These only save a note; they do not send it. Saved quotes and note
    labels use muted sage for `Yes`, rose for `No`, and slate blue for other
    comments. Vim’s active selection keeps its own highlight.
-6. Preview with `p`, copy with `y`, insert with `s`, or Send with `S`.
+6. Preview with `p`, copy with `y`, insert with `Shift+Enter`, or Send with `Ctrl+Enter`.
+
+Reply detail styles Markdown headings, lists, quotes, and fenced code in the terminal. Markdown markers remain visible so what you select is exactly what you quote.
 
 The pane is centered and keeps the source pane's width. Its help header wraps
 on narrow panes without changing the reply text or quote positions. Closing it
@@ -37,7 +39,7 @@ restores source focus only if you have not deliberately moved elsewhere.
 | Reply view | `Esc` | Return to the reply list; confirm before discarding unfinished annotations |
 | Reply view | `v` / `V`, then Enter | Comment on characters / logical lines |
 | Reply view | Enter without a selection | Comment on the current logical line |
-| Comment editor | `Ctrl+Enter` | Save a multiline comment |
+| Comment editor | `Enter` / `Shift+Enter` | Save comment / add a newline in Insert mode |
 | Comment editor | `Ctrl+Y` / `Ctrl+N` | Save `Yes` / `No` in place of the editor text |
 | Comment editor | `PgUp` / `PgDn` | Scroll the read-only quote |
 | Comment editor | Esc, then `q` | Cancel; confirm before discarding edits |
@@ -47,19 +49,19 @@ restores source focus only if you have not deliberately moved elsewhere.
 | Reply view | `m` | Pick a saved note to edit or remove |
 | Reply view | `p` | Preview the exact Markdown; `q` / Esc returns |
 | Reply view | `y` | Copy the Markdown to the macOS clipboard; stay open |
-| Reply view | `s` | Insert into the original agent draft; do not submit |
-| Reply view | `S` | Send immediately to the original agent |
+| Reply view and preview | `Shift+Enter` | Insert into the original agent draft; do not submit |
+| Reply view and preview | `Ctrl+Enter` | Send immediately to the original agent |
 | Reply view | `q` | Close; warn before discarding unfinished notes |
 
 ## Insert versus Send
 
-**Lowercase `s` never submits an extra Return. Uppercase `S` sends immediately.**
-There is no typed `SEND` confirmation for uppercase S.
+**Shift+Enter inserts without submitting. Ctrl+Enter sends immediately.**
+There is no typed `SEND` confirmation.
 
 - **Pi:** insertion uses its editor API, including with Pi-vim. The existing
   draft is preserved.
 - **Codex, Claude, and CUX:** insertion uses guarded bracketed paste. Keep the
-  original agent at an editable prompt, not a dialog. Lowercase `s` asks you to
+  original agent at an editable prompt, not a dialog. `Shift+Enter` asks you to
   confirm that prompt is ready before it pastes.
 - **Both actions:** the annotation pane closes only after successful delivery.
   Errors keep your notes open. Do not automatically retry a failed operation.

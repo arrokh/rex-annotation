@@ -240,19 +240,20 @@ def run(selected=None):
                     assert "private-id" not in screen and "2026-11-10T" not in screen, screen
                     LIVE.terminal(session, overlay, "write", {"data":"\r"})
                     detail = LIVE.wait_for(session, overlay, lambda s: "REPLY" in s and quote in s and "OLDER reply" not in s)
-                    for shortcut in ("v/V select", "Enter note", "Ctrl+E edit", "m manage", "p preview", "y copy", "s insert", "S send now", "Ctrl+W wrap", "q close"):
+                    for shortcut in ("v/V select", "Enter note", "Ctrl+E edit", "m manage", "p preview", "y copy", "Shift+Enter insert", "Ctrl+Enter send", "Ctrl+W wrap", "q close"):
                         assert shortcut in detail, (columns, rows, shortcut, detail)
                     if os.environ.get("REX_ANNOTATION_EVIDENCE_DIR"):
                         evidence = Path(os.environ["REX_ANNOTATION_EVIDENCE_DIR"])
                         evidence.mkdir(parents=True, exist_ok=True, mode=0o700)
                         (evidence / (launcher + "-" + str(columns) + "x" + str(rows) + ".txt")).write_text(detail)
                     LIVE.terminal(session, overlay, "write", {"data":"ggV\rsynthetic note"})
-                    subprocess.run(["rex", "send-key", "-s", session, "-b", overlay, "ctrl+enter"], check=True, timeout=10)
+                    subprocess.run(["rex", "send-key", "-s", session, "-b", overlay, "enter"], check=True, timeout=10)
                     LIVE.wait_for(session, overlay, lambda s: "1 notes" in s)
                     if os.environ.get("REX_ANNOTATION_EVIDENCE_DIR"):
                         html = LIVE.terminal(session, overlay, "format", {"format":"html","unwrap":True})["content"]
                         (Path(os.environ["REX_ANNOTATION_EVIDENCE_DIR"]) / (launcher + "-" + str(columns) + "-annotated.html")).write_text(html)
-                    LIVE.terminal(session, overlay, "write", {"data":action})
+                    subprocess.run(["rex", "send-key", "-s", session, "-b", overlay,
+                                    "shift+enter" if action == "s" else "ctrl+enter"], check=True, timeout=10)
                     if action == "s":
                         LIVE.wait_for(session, overlay, lambda s: "Insert into the ORIGINAL pane?" in s)
                         LIVE.terminal(session, overlay, "write", {"data":"i"})

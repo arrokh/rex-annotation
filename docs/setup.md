@@ -78,8 +78,6 @@ If Rex is running, only its configuration is reloaded. If it is stopped, setup
 saves configuration for the next launch without starting Rex. Codex trust uses a
 bounded, network-denied config-only app-server; no coding-agent thread starts.
 
-For the optional sample-only web prototype, see the [Rex Quick Look setup](rex-ui-exploration.md#loopback-server-for-quick-look). Normal setup does not start a web server or trust a certificate.
-
 ## Native agents: normal commands
 
 After setup, start `codex`, `claude`, or `cux` normally inside Rex. CUX uses the
