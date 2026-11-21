@@ -30,6 +30,8 @@ integration; it is not a fourth adapter.
 
 ## Work on the project
 
+- [Contributing](CONTRIBUTING.md): report bugs and submit changes.
+- [Security policy](SECURITY.md): report vulnerabilities without sharing details publicly.
 - [Code map and tests](development.md): where behavior lives and which checks to run.
 - [Release process](development.md#release-process): versioning, publication, and verification.
 - [Homebrew packaging](homebrew.md#build-a-release-package): reproducible archive and formula.
@@ -41,6 +43,4 @@ integration; it is not a fourth adapter.
 **Plannotator**, and **Plannotator TUI**, with links to their upstream guides.
 They are separate tools, not required parts of this installation.
 
-Need help? [Open an issue](https://github.com/arrokh/rex-annotation/issues).
-Include the plugin version, agent name, exact error, and relevant status checks.
-Do not include credentials or a full private transcript.
+Need help? See [what to include in a bug report](CONTRIBUTING.md#report-a-bug).

@@ -5,7 +5,8 @@
 
 ## Normal setup
 
-Use Codex CLI **0.167.1 or newer** with the required native hook/config APIs.
+Install [Codex CLI](https://developers.openai.com/codex/cli) **0.167.1 or newer**
+with the required native hook/config APIs.
 Plain `rex-annotation install` detects Codex. To select it explicitly:
 
 ```sh

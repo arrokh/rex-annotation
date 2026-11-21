@@ -1,6 +1,6 @@
 # Development
 
-[Project README](../README.md) · [Documentation](README.md)
+[Project README](../README.md) · [Documentation](README.md) · [Contributing](CONTRIBUTING.md)
 
 [Run checks](#run-checks) · [Live checks](#optional-live-checks) ·
 [Code map](#layout) · [Release](#release-process)
