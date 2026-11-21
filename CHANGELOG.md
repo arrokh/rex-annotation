@@ -2,6 +2,10 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.3
+
+- Open long Claude sessions when the retained transcript starts with a tool result whose call was outside the read window.
+
 ## 0.2.2
 
 - Render simple bold, inline code, and links in terminal reply detail, and align simple Markdown tables. Preserve the original Markdown when quoting or annotating.

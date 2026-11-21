@@ -60,6 +60,17 @@ class ClaudeParallelToolsTests(unittest.TestCase):
         self.assertNotIn("PRIVATE", json.dumps(result))
         self.assertEqual([r["id"] for r in result], ["intro", "answer"])
 
+    def test_tail_starting_at_tool_result_keeps_later_reply(self):
+        rows = parallel_rows()
+        tail = [rows[7], rows[8], rows[9]]
+        with self.assertRaises(replies.ReplyError):
+            self.parse(tail)
+        byte_limit = sum(len((json.dumps(row) + "\n").encode()) for row in tail)
+        with mock.patch.object(replies, "MAX_TRANSCRIPT_BYTES", byte_limit):
+            self.assertEqual([r["text"] for r in self.parse(rows)], ["After tools. | é猫"])
+        with mock.patch.object(replies, "MAX_TRANSCRIPT_ENTRIES", len(tail)):
+            self.assertEqual([r["id"] for r in self.parse(rows)], ["answer"])
+
     def test_each_partial_prefix_is_readable_while_tools_are_running(self):
         rows = parallel_rows()
         for end in range(2, len(rows) + 1):
