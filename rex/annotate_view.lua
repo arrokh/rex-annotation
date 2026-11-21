@@ -3,6 +3,17 @@ local directory = debug.getinfo(1, "S").source:sub(2):match("^(.*[/\\])")
 local core = dofile(directory .. "annotate_core.lua")
 local M = {}
 
+local annotation_palette = {
+  Comment = { dark = { 0xe2eaf4, 0x374a61, 253, 24 }, light = { 0x27384e, 0xdce5ef, 24, 254 } },
+  Yes = { dark = { 0xe2eee3, 0x354f42, 253, 22 }, light = { 0x294239, 0xd8e8dc, 22, 194 } },
+  No = { dark = { 0xf3e5e8, 0x5a3e48, 253, 52 }, light = { 0x50313c, 0xefdde3, 52, 225 } },
+}
+
+local function annotation_highlight(comment)
+  local value = vim.trim(comment):lower()
+  return "RexAnnotation" .. (value == "yes" and "Yes" or value == "no" and "No" or "Comment")
+end
+
 local function scratch(lines, editable)
   local buf = vim.api.nvim_create_buf(false, true)
   vim.bo[buf].swapfile = false
@@ -41,10 +52,15 @@ function M.open(snapshot, target, services, source_title, on_back)
   vim.o.writebackup = false
   vim.o.clipboard = ""
   vim.o.mouse = ""
-  -- Saved marks must remain obvious without sharing the active Visual selection color.
-  local annotation_style = { fg = "#1b1b1b", bg = "#f5c542", bold = true, ctermfg = 0, ctermbg = 11 }
-  vim.api.nvim_set_hl(0, "RexAnnotationSpan", annotation_style)
-  vim.api.nvim_set_hl(0, "RexAnnotationNote", annotation_style)
+  local function set_annotation_colors()
+    for kind, variants in pairs(annotation_palette) do
+      local colors = variants[vim.o.background]
+      vim.api.nvim_set_hl(0, "RexAnnotation" .. kind, {
+        fg = colors[1], bg = colors[2], ctermfg = colors[3], ctermbg = colors[4],
+      })
+    end
+  end
+  set_annotation_colors()
   local lines = vim.split(snapshot, "\n", { plain = true })
   local source = scratch(lines)
   local win = vim.api.nvim_get_current_win()
@@ -69,6 +85,7 @@ function M.open(snapshot, target, services, source_title, on_back)
   local draft = core.draft(target.block_id)
   local session = { source = source, draft = draft, namespace = ns }
   local group = vim.api.nvim_create_augroup("rex-annotate-" .. source, { clear = true })
+  vim.api.nvim_create_autocmd("OptionSet", { group = group, pattern = "background", callback = set_annotation_colors })
   local editor, editor_quote, preview
   local closed = false
   local function wrap_cells(text, width)
@@ -88,7 +105,7 @@ function M.open(snapshot, target, services, source_title, on_back)
     local width = math.max(1, vim.api.nvim_win_get_width(header_win))
     local help = wrap_cells(tostring(source_title or "SNAPSHOT"), width)
     local line = ""
-    local actions = { "v/V select", "Enter note", "[a/]a jump", "\\e edit", "m manage", "p preview",
+    local actions = { "v/V select", "Enter note", "n/N notes", "\\n/\\N search", "\\e edit", "m manage", "p preview",
       "y copy", "s insert", "S send now", "\\w wrap" }
     if on_back then actions[#actions + 1] = "Esc list" end
     actions[#actions + 1] = "q close"
@@ -124,8 +141,9 @@ function M.open(snapshot, target, services, source_title, on_back)
     for _, note in ipairs(draft.notes) do
       local start_row, start_col = note.range[1] - 1, note.range[2]
       local end_row, end_col = note.range[3] - 1, note.range[4]
+      local highlight = annotation_highlight(note.comment)
       vim.api.nvim_buf_set_extmark(source, ns, start_row, start_col, {
-        end_row = end_row, end_col = end_col, hl_group = "RexAnnotationSpan", priority = 120,
+        end_row = end_row, end_col = end_col, hl_group = highlight, priority = 120,
       })
       local label_row, label_col = end_row, end_col
       if note.range.mode == "V" and end_col == 0 and end_row > start_row then
@@ -133,7 +151,7 @@ function M.open(snapshot, target, services, source_title, on_back)
         label_col = #lines[label_row + 1]
       end
       vim.api.nvim_buf_set_extmark(source, ns, label_row, label_col, {
-        virt_text = { { "  [" .. note.id .. "] " .. vim.fn.strcharpart(note.comment:gsub("\n", " "), 0, 70), "RexAnnotationNote" } },
+        virt_text = { { "  [" .. note.id .. "] " .. vim.fn.strcharpart(note.comment:gsub("\n", " "), 0, 70), highlight } },
         virt_text_pos = "eol",
       })
     end
@@ -362,10 +380,15 @@ function M.open(snapshot, target, services, source_title, on_back)
       if not match and not before(cursor[1], cursor[2], r[1], r[2])
         and before(cursor[1], cursor[2], r[3], r[4]) then match = note end
     end
-    if match then edit_note(match) else notify("No annotation here; jump with [a or ]a") end
+    if match then edit_note(match) else notify("No annotation here; jump with n or N") end
   end
-  mapping(source, "n", "[a", guarded(function() jump(-1) end))
-  mapping(source, "n", "]a", guarded(function() jump(1) end))
+  local next_note = guarded(function() jump(1) end)
+  local prev_note = guarded(function() jump(-1) end)
+  for _, key in ipairs({ "n", "]a" }) do mapping(source, "n", key, next_note) end
+  for _, key in ipairs({ "N", "[a" }) do mapping(source, "n", key, prev_note) end
+  -- Preserve native search, including direction, count, and wrapscan.
+  vim.keymap.set("n", "\\n", "n", { buffer = source, silent = true })
+  vim.keymap.set("n", "\\N", "N", { buffer = source, silent = true })
   mapping(source, "n", "\\e", guarded(edit_at_cursor))
   mapping(source, "x", "<CR>", guarded(comment_selection))
   mapping(source, "n", "<CR>", guarded(comment_current_line))
