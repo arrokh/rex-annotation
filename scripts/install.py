@@ -382,8 +382,6 @@ def main(argv=None):
     print("Rex config reloaded. No agent process was reloaded." if reloaded else
           "Rex is not running; saved config will load when Rex starts. No agent process was reloaded.")
     print("Next: rex-annotation status (read-only checks with specific fixes)")
-    if sys.platform == "darwin":
-        print("Optional Rex web prototype: rex-annotation web-preview --trust-local-certificate")
     if "codex" in selected:
         print("Codex lifecycle hooks are enabled and this integration's exact definitions are trusted.")
     if "pi" in selected:

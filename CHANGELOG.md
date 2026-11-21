@@ -2,6 +2,13 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.1
+
+- Style Markdown headings, list markers, quotations, and fenced code directly in terminal reply detail without changing the quoted text.
+
+- Remove the experimental web preview, its localhost certificate setup, and the `Ctrl+S`, then `Shift+O` binding. The terminal annotator remains available.
+- Save comments with `Enter` and add comment newlines with `Shift+Enter`. In reply detail and preview, use `Shift+Enter` to insert and `Ctrl+Enter` to send.
+
 ## 0.2.0
 
 - Bundle an optional, sample-only Markdown review prototype for Rex Quick Look. Run `rex-annotation web-preview --trust-local-certificate` and Shift+Cmd-click the printed HTTPS link.

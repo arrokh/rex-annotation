@@ -41,21 +41,21 @@ Synthetic replies only; no agent session or model request is started.
 
 1. Start `pi`, `codex`, `claude`, or `cux` normally in a Rex pane after setup.
 2. Press **Ctrl+S, then o**. Pick a reply with `j`/`k` and **Enter**.
-3. Select a quote with `v` or `V`, then **Enter** to comment. **Ctrl+Enter** saves the
+3. Select a quote with `v` or `V`, then **Enter** to comment. **Enter** saves the
    comment. Enter without a selection comments on the current logical line.
 4. Choose what to do with the feedback:
 
 | Key | Result |
 | --- | --- |
-| `s` | Insert into the original agent's draft **without submitting** |
-| `S` | **Send immediately** to the original agent |
+| `Shift+Enter` | Insert into the original agent's draft **without submitting** |
+| `Ctrl+Enter` | **Send immediately** to the original agent |
 | `p` / `y` | Preview / copy the feedback |
 | `m` | Edit or remove a saved note |
 | `q` | Close; confirm before discarding unfinished notes |
 
 Successful insert or Send closes the annotation pane. A failure keeps your
-notes open. Codex/Claude/CUX must be at an editable prompt; lowercase `s` asks
-for confirmation before pasting. **Uppercase `S` does not ask for a typed SEND.**
+notes open. Codex/Claude/CUX must be at an editable prompt; `Shift+Enter` asks
+for confirmation before pasting. **`Ctrl+Enter` does not ask for a typed SEND.**
 
 The target is the saved pane and conversation, not whichever pane later gets
 focus. The plugin refuses ambiguous native history instead of guessing a

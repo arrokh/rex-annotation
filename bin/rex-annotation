@@ -16,7 +16,6 @@ def _usage():
     print("Usage: rex-annotation install [--detect] [--pi] [--codex] [--claude] [--all] [--reload-rex]\n"
           "       rex-annotation status [--json] [--pi] [--codex] [--claude]\n"
           "       rex-annotation doctor [status options]\n"
-          "       rex-annotation web-preview --trust-local-certificate\n"
           "       rex-annotation --version\n"
           "       rex-annotation codex|claude [agent options...]\n"
           "Install automatically configures detected Pi, Codex, and Claude/CUX integrations.")
@@ -34,20 +33,17 @@ def main():
             version = "unknown"
         print(version)
         return 0
-    if args[0] in ("install", "status", "doctor", "web-preview"):
+    if args[0] in ("install", "status", "doctor"):
         sys.path.insert(0, str(ROOT / "scripts"))
         if args[0] == "install":
             import install
             return install.main(args[1:])
-        if args[0] == "web-preview":
-            import web_preview
-            return web_preview.main(args[1:], ROOT)
         import status
         return status.main(args[1:])
 
     agent, rest = args[0], args[1:]
     if agent not in ("codex", "claude"):
-        print("Expected install, status, doctor, web-preview, codex, or claude", file=sys.stderr)
+        print("Expected install, status, doctor, codex, or claude", file=sys.stderr)
         return 2
     if not os.environ.get("REX_SESSION") or not os.environ.get("REX_BLOCK"):
         print("Run this launcher in the Rex pane that should own the agent", file=sys.stderr)

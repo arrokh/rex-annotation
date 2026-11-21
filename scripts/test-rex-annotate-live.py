@@ -257,9 +257,9 @@ export default function(pi) {
                         terminal(session, overlay, "write", {"data": "\r"})
                         wait_for(session, overlay, lambda s: "PI REPLY" in s and "LATEST HISTORY MESSAGE" in s)
                         terminal(session, overlay, "write", {"data": "ggV\rbridge-end-to-end-note"})
-                        subprocess.run(["rex", "send-key", "-s", session, "-b", overlay, "ctrl+enter"], check=True, timeout=10)
+                        subprocess.run(["rex", "send-key", "-s", session, "-b", overlay, "enter"], check=True, timeout=10)
                         wait_for(session, overlay, lambda s: "bridge-end-to-end-note" in s)
-                        terminal(session, overlay, "write", {"data": "s"})
+                        subprocess.run(["rex", "send-key", "-s", session, "-b", overlay, "shift+enter"], check=True, timeout=10)
                         wait_for(session, block, lambda s: "bridge-end-to-end-note" in s)
                         wait_until_closed(session, overlay)
                         print("PASS Pi reply flow: one title, relative-time row, Enter comment, direct insert and auto-close without submission", flush=True)
@@ -344,8 +344,11 @@ def run_overlay(clipboard=False, installed=False, leave_focus=False):
         comment = "why?\\nclarify"  # expected content, not a shell command
         if clipboard:
             comment += " " + os.environ["REX_ANNOTATE_CLIPBOARD_TOKEN"]
-        terminal(session, block, "write", {"data": "gg0v4l\r" + comment.replace("\\n", "\r")})
-        subprocess.run(["rex", "send-key", "-s", session, "-b", block, "ctrl+enter"], check=True, timeout=10)
+        first, second = comment.split("\\n", 1)
+        terminal(session, block, "write", {"data": "gg0v4l\r" + first})
+        subprocess.run(["rex", "send-key", "-s", session, "-b", block, "shift+enter"], check=True, timeout=10)
+        terminal(session, block, "write", {"data": second})
+        subprocess.run(["rex", "send-key", "-s", session, "-b", block, "enter"], check=True, timeout=10)
         wait_for(session, block, lambda s: "why? clarify" in s)
         terminal(session, block, "write", {"data": "p"})
         wait_for(session, block, lambda s: "# Terminal annotations" in s and "Feedback:" in s)

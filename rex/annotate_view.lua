@@ -63,6 +63,7 @@ function M.open(snapshot, target, services, source_title, on_back)
   set_annotation_colors()
   local lines = vim.split(snapshot, "\n", { plain = true })
   local source = scratch(lines)
+  if on_back then dofile(directory .. "annotate_markdown.lua").apply(source, lines) end
   local win = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(win, source)
   -- Keep help in an owned split: winbar truncates long detail titles and cannot reflow.
@@ -106,7 +107,7 @@ function M.open(snapshot, target, services, source_title, on_back)
     local help = wrap_cells(tostring(source_title or "SNAPSHOT"), width)
     local line = ""
     local actions = { "v/V select", "Enter note", "n/N notes", "\\n/\\N search", "Ctrl+E edit", "m manage", "p preview",
-      "y copy", "s insert", "S send now", "Ctrl+W wrap" }
+      "y copy", "Shift+Enter insert", "Ctrl+Enter send", "Ctrl+W wrap" }
     if on_back then actions[#actions + 1] = "Esc list" end
     actions[#actions + 1] = "q close"
     for _, action in ipairs(actions) do
@@ -250,7 +251,7 @@ function M.open(snapshot, target, services, source_title, on_back)
       return vim.tbl_extend("force", common, { row = 0, height = quote_height, focusable = false,
         title = width >= 28 and " Quote (PgUp/PgDn scroll) " or " Quote " }),
         vim.tbl_extend("force", common, { row = quote_height + 2, height = height,
-          title = width >= 42 and " Comment: Ctrl+Enter save / Esc then q " or " Ctrl+Enter save ",
+          title = width >= 52 and " Enter save / Shift+Enter newline / Esc then q " or " Enter save ",
           footer = " ^Y Yes / ^N No " })
     end
     local quote_config, modal_config = layout()
@@ -292,7 +293,8 @@ function M.open(snapshot, target, services, source_title, on_back)
       finish()
       refresh()
     end
-    mapping(buf, { "i", "n" }, "<C-CR>", guarded(function() submit(contents()) end))
+    mapping(buf, { "i", "n" }, "<CR>", guarded(function() submit(contents()) end))
+    mapping(buf, "i", "<S-CR>", "<CR>")
     mapping(buf, { "i", "n" }, "<C-y>", guarded(function() submit("Yes") end))
     mapping(buf, { "i", "n" }, "<C-n>", guarded(function() submit("No") end))
     for _, key in ipairs({ "<PageUp>", "<PageDown>" }) do
@@ -432,8 +434,8 @@ function M.open(snapshot, target, services, source_title, on_back)
     mapping(buf, "n", "q", back)
     mapping(buf, "n", "<Esc>", back)
     mapping(buf, "n", "y", function() attempt_delivery("copy") end)
-    mapping(buf, "n", "s", function() attempt_delivery("insert") end)
-    mapping(buf, "n", "S", function() attempt_delivery("send") end)
+    mapping(buf, "n", "<S-CR>", function() attempt_delivery("insert") end)
+    mapping(buf, "n", "<C-CR>", function() attempt_delivery("send") end)
   end
   mapping(source, "n", "<C-w>", guarded(function()
     vim.wo[win].wrap = not vim.wo[win].wrap
@@ -441,8 +443,8 @@ function M.open(snapshot, target, services, source_title, on_back)
   end))
   mapping(source, "n", "p", guarded(preview_payload))
   mapping(source, "n", "y", function() attempt_delivery("copy") end)
-  mapping(source, "n", "s", function() attempt_delivery("insert") end)
-  mapping(source, "n", "S", function() attempt_delivery("send") end)
+  mapping(source, "n", "<S-CR>", function() attempt_delivery("insert") end)
+  mapping(source, "n", "<C-CR>", function() attempt_delivery("send") end)
   if on_back then
     mapping(source, "n", "<Esc>", guarded(function() session:close(false, true) end))
   end
