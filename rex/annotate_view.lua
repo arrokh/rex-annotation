@@ -69,7 +69,7 @@ function M.open(snapshot, target, services, source_title, on_back)
   local draft = core.draft(target.block_id)
   local session = { source = source, draft = draft, namespace = ns }
   local group = vim.api.nvim_create_augroup("rex-annotate-" .. source, { clear = true })
-  local editor, preview
+  local editor, editor_quote, preview
   local closed = false
   local function wrap_cells(text, width)
     local result, line = {}, ""
@@ -88,7 +88,8 @@ function M.open(snapshot, target, services, source_title, on_back)
     local width = math.max(1, vim.api.nvim_win_get_width(header_win))
     local help = wrap_cells(tostring(source_title or "SNAPSHOT"), width)
     local line = ""
-    local actions = { "v/V select", "Enter note", "m edit", "p preview", "y copy", "s insert", "S send now", "\\w wrap" }
+    local actions = { "v/V select", "Enter note", "[a/]a jump", "\\e edit", "m manage", "p preview",
+      "y copy", "s insert", "S send now", "\\w wrap" }
     if on_back then actions[#actions + 1] = "Esc list" end
     actions[#actions + 1] = "q close"
     for _, action in ipairs(actions) do
@@ -158,7 +159,16 @@ function M.open(snapshot, target, services, source_title, on_back)
       vim.api.nvim_win_set_buf(win, source)
     end
     if vim.api.nvim_win_is_valid(header_win) then vim.api.nvim_win_close(header_win, true) end
-    for _, buf in ipairs({ editor or false, preview or false, header, source }) do
+    for _, buf in ipairs({ editor or false, editor_quote or false }) do
+      if buf then
+        for _, float in ipairs(vim.fn.win_findbuf(buf)) do
+          if vim.api.nvim_win_is_valid(float) and vim.api.nvim_win_get_config(float).relative ~= "" then
+            vim.api.nvim_win_close(float, true)
+          end
+        end
+      end
+    end
+    for _, buf in ipairs({ editor or false, editor_quote or false, preview or false, header, source }) do
       if buf and vim.api.nvim_buf_is_valid(buf) then vim.api.nvim_buf_delete(buf, { force = true }) end
     end
     if not back_to_list and services.quit then services.quit() end
@@ -186,7 +196,7 @@ function M.open(snapshot, target, services, source_title, on_back)
     end
     session:close(true)
   end
-  local function comment(initial, save, canceled)
+  local function comment(quote, initial, save, canceled)
     assert(not editor, "Finish or cancel the current comment")
     editor = scratch(vim.split(initial or "", "\n", { plain = true }), true)
     local buf = editor
@@ -195,33 +205,71 @@ function M.open(snapshot, target, services, source_title, on_back)
     vim.bo[buf].bufhidden = ""
     vim.bo[buf].modified = false
     vim.o.hidden = false
-    local width = math.max(1, math.min(72, vim.o.columns - 4))
-    local height = math.max(1, math.min(8, vim.o.lines - 6))
-    local modal = vim.api.nvim_open_win(buf, true, { relative = "editor", style = "minimal", border = "rounded",
-      width = width, height = height, row = 1, col = math.max(0, math.floor((vim.o.columns - width) / 2)),
-      title = " Comment • Ctrl+s save • Esc then q cancel " })
+    local excerpt = scratch(vim.split(quote, "\n", { plain = true }))
+    editor_quote = excerpt
+    vim.bo[excerpt].bufhidden = "wipe"
+    local function layout()
+      local width = math.max(1, math.min(72, vim.o.columns - 4))
+      local col = math.max(0, math.floor((vim.o.columns - width - 2) / 2))
+      local quote_height = math.max(1, math.min(4, math.floor((vim.o.lines - 7) / 3)))
+      local height = math.max(1, math.min(8, vim.o.lines - quote_height - 7))
+      local common = { relative = "editor", style = "minimal", border = "rounded", width = width, col = col }
+      return vim.tbl_extend("force", common, { row = 0, height = quote_height, focusable = false,
+        title = width >= 28 and " Quote (PgUp/PgDn scroll) " or " Quote " }),
+        vim.tbl_extend("force", common, { row = quote_height + 2, height = height,
+          title = width >= 34 and " Comment: ^S save / Esc then q " or " Comment ",
+          footer = " ^Y Yes / ^N No " })
+    end
+    local quote_config, modal_config = layout()
+    local quote_win = vim.api.nvim_open_win(excerpt, false, quote_config)
+    vim.wo[quote_win].wrap = true
+    vim.wo[quote_win].linebreak = true
+    vim.wo[quote_win].smoothscroll = true
+    local modal = vim.api.nvim_open_win(buf, true, modal_config)
+    local resize = vim.api.nvim_create_autocmd("VimResized", { group = group, callback = function()
+      if vim.api.nvim_win_is_valid(modal) and vim.api.nvim_win_is_valid(quote_win) then
+        local quote_layout, modal_layout = layout()
+        vim.api.nvim_win_set_config(quote_win, quote_layout)
+        vim.api.nvim_win_set_config(modal, modal_layout)
+      end
+    end })
+    local function cleanup()
+      if editor_quote == excerpt then editor_quote = nil end
+      if vim.api.nvim_win_is_valid(quote_win) then vim.api.nvim_win_close(quote_win, true) end
+      if vim.api.nvim_buf_is_valid(buf) then vim.api.nvim_buf_delete(buf, { force = true }) end
+    end
+    vim.api.nvim_create_autocmd("WinClosed", { group = group, pattern = tostring(modal), once = true, callback = function()
+      vim.api.nvim_del_autocmd(resize)
+      if editor == buf then
+        editor = nil
+        -- Native close is still processing this window; defer buffer deletion.
+        vim.schedule(cleanup)
+      end
+    end })
     local function finish()
       editor = nil
       vim.api.nvim_win_close(modal, true)
-      if vim.api.nvim_buf_is_valid(buf) then vim.api.nvim_buf_delete(buf, { force = true }) end
+      cleanup()
       vim.api.nvim_set_current_win(win)
     end
-    vim.api.nvim_create_autocmd("WinClosed", { group = group, pattern = tostring(modal), once = true, callback = function()
-      if editor == buf then
-        editor = nil
-        vim.schedule(function()
-          if vim.api.nvim_buf_is_valid(buf) then vim.api.nvim_buf_delete(buf, { force = true }) end
-        end)
-      end
-    end })
     local function contents() return table.concat(vim.api.nvim_buf_get_lines(buf, 0, -1, false), "\n") end
-    mapping(buf, { "i", "n" }, "<C-s>", guarded(function()
-      local value = contents()
+    local function submit(value)
       save(value) -- Invalid/blank content leaves this editor open.
       vim.cmd.stopinsert()
       finish()
       refresh()
-    end))
+    end
+    mapping(buf, { "i", "n" }, "<C-s>", guarded(function() submit(contents()) end))
+    mapping(buf, { "i", "n" }, "<C-y>", guarded(function() submit("Yes") end))
+    mapping(buf, { "i", "n" }, "<C-n>", guarded(function() submit("No") end))
+    for _, key in ipairs({ "<PageUp>", "<PageDown>" }) do
+      mapping(buf, { "i", "n" }, key, guarded(function()
+        vim.api.nvim_win_call(quote_win, function()
+          local scroll = key == "<PageUp>" and "<C-y>" or "<C-e>"
+          vim.cmd.normal({ bang = true, args = { vim.api.nvim_win_get_height(quote_win) .. vim.keycode(scroll) } })
+        end)
+      end))
+    end
     mapping(buf, "n", "q", function()
       if contents() == (initial or "") or discard("Discard this comment edit?") then
         finish()
@@ -249,7 +297,7 @@ function M.open(snapshot, target, services, source_title, on_back)
     end
     local range = { start_row, start_byte, range_end_row, range_end_byte, mode = mode }
     vim.cmd.normal({ args = { vim.api.nvim_replace_termcodes("<Esc>", true, false, true) }, bang = true })
-    comment("", function(value) draft:add(quote, value, range) end,
+    comment(quote, "", function(value) draft:add(quote, value, range) end,
       function() vim.cmd.normal({ args = { "gv" }, bang = true }) end)
   end
   local function comment_current_line()
@@ -260,10 +308,65 @@ function M.open(snapshot, target, services, source_title, on_back)
       quote = quote .. "\n"
       range_end_row, range_end_byte = row + 1, 0
     end
-    comment("", function(value)
+    comment(quote, "", function(value)
       draft:add(quote, value, { row, 0, range_end_row, range_end_byte, mode = "V" })
     end)
   end
+  local jumped
+  local function before(row, col, other_row, other_col)
+    return row < other_row or (row == other_row and col < other_col)
+  end
+  local function at_jump(cursor)
+    return jumped and jumped.row == cursor[1] and jumped.col == cursor[2]
+  end
+  vim.api.nvim_create_autocmd("CursorMoved", { group = group, buffer = source, callback = function()
+    if not at_jump(vim.api.nvim_win_get_cursor(win)) then jumped = nil end
+  end })
+  local function jump(direction)
+    if #draft.notes == 0 then notify("No annotations yet"); return end
+    local ordered = vim.list_extend({}, draft.notes)
+    table.sort(ordered, function(a, b)
+      local ar, br = a.range, b.range
+      if ar[1] == br[1] and ar[2] == br[2] then return a.id < b.id end
+      return before(ar[1], ar[2], br[1], br[2])
+    end)
+    local cursor = vim.api.nvim_win_get_cursor(win)
+    local index
+    for i, note in ipairs(ordered) do
+      if at_jump(cursor) and note.id == jumped.id then index = i; break end
+    end
+    if index then
+      index = (index - 1 + direction) % #ordered + 1
+    else
+      for i, note in ipairs(ordered) do
+        local row, col = note.range[1], note.range[2]
+        if direction == 1 and before(cursor[1], cursor[2], row, col) then index = i; break end
+        if direction == -1 and before(row, col, cursor[1], cursor[2]) then index = i end
+      end
+      index = index or (direction == 1 and 1 or #ordered)
+    end
+    local note = ordered[index]
+    vim.api.nvim_win_set_cursor(win, { note.range[1], note.range[2] })
+    cursor = vim.api.nvim_win_get_cursor(win)
+    jumped = { id = note.id, row = cursor[1], col = cursor[2] }
+  end
+  local function edit_note(note)
+    comment(note.quote, note.comment, function(value) draft:edit(note.id, value) end)
+  end
+  local function edit_at_cursor()
+    local cursor = vim.api.nvim_win_get_cursor(win)
+    local match
+    for _, note in ipairs(draft.notes) do
+      if at_jump(cursor) and note.id == jumped.id then edit_note(note); return end
+      local r = note.range
+      if not match and not before(cursor[1], cursor[2], r[1], r[2])
+        and before(cursor[1], cursor[2], r[3], r[4]) then match = note end
+    end
+    if match then edit_note(match) else notify("No annotation here; jump with [a or ]a") end
+  end
+  mapping(source, "n", "[a", guarded(function() jump(-1) end))
+  mapping(source, "n", "]a", guarded(function() jump(1) end))
+  mapping(source, "n", "\\e", guarded(edit_at_cursor))
   mapping(source, "x", "<CR>", guarded(comment_selection))
   mapping(source, "n", "<CR>", guarded(comment_current_line))
   mapping(source, "n", "m", function()
@@ -273,7 +376,7 @@ function M.open(snapshot, target, services, source_title, on_back)
     end }, function(note)
       if not note then return end
       vim.ui.select({ "Edit", "Remove" }, { prompt = "Annotation " .. note.id }, guarded(function(choice)
-        if choice == "Edit" then comment(note.comment, function(value) draft:edit(note.id, value) end)
+        if choice == "Edit" then edit_note(note)
         elseif choice == "Remove" then draft:remove(note.id); refresh() end
       end))
     end)

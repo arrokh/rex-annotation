@@ -2,6 +2,12 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.1.14
+
+- Show the exact selected quote in a scrollable, read-only preview when creating or editing a comment.
+- Save `Yes` and `No` comments with `Ctrl+Y` and `Ctrl+N` without sending anything to the agent.
+- Jump between saved annotations with `[a` and `]a`; use `\e` to edit the focused annotation directly.
+
 ## 0.1.13
 
 - Fix Claude and CUX reply discovery when transcript rows carry different `sessionId` and `session_id` values. The canonical `sessionId` still has to match the bound conversation.
