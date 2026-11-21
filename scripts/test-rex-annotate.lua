@@ -281,6 +281,30 @@ test("failed insert and Send retain notes and leave the overlay open", function(
   session:close(true)
 end)
 
+test("busy Pi leaves a retry hint without a hit-enter prompt and allows a manual retry", function()
+  local view = dofile(root .. "annotate_view.lua")
+  local attempts, quit = 0, 0
+  local session = view.open("alpha", { block_id = "b" }, {
+    insert_requires_confirmation = false,
+    insert = function()
+      attempts = attempts + 1
+      if attempts == 1 then error("Pi is busy; wait for its editable prompt") end
+    end,
+    quit = function() quit = quit + 1 end,
+  })
+  session.draft:add("alpha", "keep this note", { 1, 0, 1, 5 })
+  local payload = session:payload()
+  vim.fn.feedkeys("ps", "xt")
+  eq(1, attempts)
+  eq(0, quit)
+  eq(payload, session:payload())
+  assert(vim.wo.statusline:find("Pi busy. Notes kept; retry when idle.", 1, true))
+  assert(not vim.wo.statusline:find(".lua", 1, true))
+  vim.fn.feedkeys("s", "xt")
+  eq(2, attempts)
+  eq(1, quit)
+end)
+
 test("non-Pi insertion retains its editable-prompt confirmation", function()
   local view = dofile(root .. "annotate_view.lua")
   local inserted
@@ -532,6 +556,7 @@ test("launcher uses explicit source window, local client and an isolated Neovim 
   vim.env.XDG_CONFIG_HOME = vim.fn.getcwd()
   dofile(root .. "annotate.lua")
   eq("annotate_open", bindings["ctrl+s>o"])
+  eq("client.quick_look", bindings["ctrl+s>shift+o"])
   eq(nil, bindings["ctrl+s>shift+a"])
   eq(nil, bindings["ctrl+s>a"])
   action.run({ session_id = "session:test", block_id = "block:source", client_id = "client:local" }, {})

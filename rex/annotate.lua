@@ -96,3 +96,6 @@ rex.action{
   run = function(ctx) return open_annotation(ctx) end,
 }
 rex.bind("ctrl+s>o", "annotate_open")
+
+-- Quick Look uses the link on screen; the client action has no URL argument.
+rex.bind("ctrl+s>shift+o", "client.quick_look")

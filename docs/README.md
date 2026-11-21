@@ -31,6 +31,7 @@ integration; it is not a fourth adapter.
 ## Work on the project
 
 - [Code map and tests](development.md): where behavior lives and which checks to run.
+- [Rex-native UI exploration](rex-ui-exploration.md): current APIs and options for the annotation interface.
 - [Release process](development.md#release-process): versioning, publication, and verification.
 - [Homebrew packaging](homebrew.md#build-a-release-package): reproducible archive and formula.
 - [Changelog](../CHANGELOG.md): shipped changes.

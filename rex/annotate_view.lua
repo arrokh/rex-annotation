@@ -130,11 +130,13 @@ function M.open(snapshot, target, services, source_title, on_back)
     vim.api.nvim_win_set_cursor(header_win, { 1, 0 })
   end
   vim.api.nvim_create_autocmd({ "VimResized", "WinResized" }, { group = group, callback = refresh_header })
+  local delivery_error
   local function refresh_status()
     if not vim.api.nvim_win_is_valid(win) then return end
     local wrap_state = vim.wo[win].wrap and "wrap" or "nowrap"
     vim.wo[win].statusline = " Rex Annotate · " .. #draft.notes .. " notes · "
-      .. statusline_text(target.block_id) .. " · " .. wrap_state .. " %=%l:%c "
+      .. (delivery_error and statusline_text(delivery_error)
+        or statusline_text(target.block_id) .. " · " .. wrap_state) .. " %=%l:%c "
   end
   local function refresh()
     vim.api.nvim_buf_clear_namespace(source, ns, 0, -1)
@@ -213,6 +215,19 @@ function M.open(snapshot, target, services, source_title, on_back)
       services.insert(payload)
     end
     session:close(true)
+  end
+  local function attempt_delivery(kind)
+    delivery_error = nil
+    refresh_status()
+    local ok, err = pcall(deliver, kind)
+    if not ok then
+      local message = tostring(err):gsub("\n.*", ""):gsub("^.-%.lua:%d+: ", "")
+      if message:find("Pi is busy; wait for its editable prompt", 1, true) then
+        message = "Pi busy. Notes kept; retry when idle."
+      end
+      delivery_error = message:gsub("[%c]", " ")
+      refresh_status()
+    end
   end
   local function comment(quote, initial, save, canceled)
     assert(not editor, "Finish or cancel the current comment")
@@ -416,18 +431,18 @@ function M.open(snapshot, target, services, source_title, on_back)
     end
     mapping(buf, "n", "q", back)
     mapping(buf, "n", "<Esc>", back)
-    mapping(buf, "n", "y", guarded(function() deliver("copy") end))
-    mapping(buf, "n", "s", guarded(function() deliver("insert") end))
-    mapping(buf, "n", "S", guarded(function() deliver("send") end))
+    mapping(buf, "n", "y", function() attempt_delivery("copy") end)
+    mapping(buf, "n", "s", function() attempt_delivery("insert") end)
+    mapping(buf, "n", "S", function() attempt_delivery("send") end)
   end
   mapping(source, "n", "<C-w>", guarded(function()
     vim.wo[win].wrap = not vim.wo[win].wrap
     refresh_status()
   end))
   mapping(source, "n", "p", guarded(preview_payload))
-  mapping(source, "n", "y", guarded(function() deliver("copy") end))
-  mapping(source, "n", "s", guarded(function() deliver("insert") end))
-  mapping(source, "n", "S", guarded(function() deliver("send") end))
+  mapping(source, "n", "y", function() attempt_delivery("copy") end)
+  mapping(source, "n", "s", function() attempt_delivery("insert") end)
+  mapping(source, "n", "S", function() attempt_delivery("send") end)
   if on_back then
     mapping(source, "n", "<Esc>", guarded(function() session:close(false, true) end))
   end

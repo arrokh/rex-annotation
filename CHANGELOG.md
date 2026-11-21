@@ -2,6 +2,12 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.0
+
+- Bundle an optional, sample-only Markdown review prototype for Rex Quick Look. Run `rex-annotation web-preview --trust-local-certificate` and Shift+Cmd-click the printed HTTPS link.
+- Bind `Ctrl+S`, then `Shift+O` to Rex Quick Look for on-screen items. Lowercase `o` still opens the terminal annotator.
+- Keep annotations open when Pi is busy and show a retry hint without a blocking Neovim prompt.
+
 ## 0.1.16
 
 - Use `Ctrl+E` to edit, `Ctrl+W` to toggle wrapping, and `Ctrl+Enter` to save a comment. Use `n` and `N` to jump between notes; remove the bracket aliases.
