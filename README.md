@@ -12,9 +12,9 @@ and Claude Code (including CUX)**. Other terminal panes support copy-only annota
 
 [Quick start](#quick-start) · [Usage](docs/usage.md) · [Troubleshooting](docs/setup.md#common-fixes) · [All docs](docs/README.md)
 
-[![Watch the 38-second walkthrough](docs/assets/rex-annotation-demo-cover.png)](docs/assets/rex-annotation-demo.mp4)
+![Rex Annotation demo: pick a Pi reply, select a line, add a comment, preview the Markdown, and insert it without sending](docs/assets/rex-annotation-demo.gif)
 
-The silent demo uses synthetic replies and does not make a model request.
+The demo uses a synthetic reply and a simulated draft. No model request is made.
 
 ## Quick start
 
