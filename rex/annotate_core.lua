@@ -33,8 +33,20 @@ function M.draft(source)
   function draft:format()
     if #self.notes == 0 then return "" end
     local parts = { "# Terminal annotations" }
-    for i, note in ipairs(self.notes) do
-      parts[#parts + 1] = "## " .. i .. "\n> " .. note.quote:gsub("\n", "\n> ") .. "\n\nComment:\n" .. note.comment
+    for _, note in ipairs(self.notes) do
+      -- Linewise selection includes the following separator. Omit just that
+      -- newline in the payload, not blank lines inside the quoted text.
+      local quote = note.range and note.range.mode == "V" and note.quote:gsub("\n$", "") or note.quote
+      local feedback = "Feedback: " .. note.comment
+      if note.comment:find("\n", 1, true) then
+        -- Preserve literal multiline feedback without letting its Markdown
+        -- consume the next annotation. Use a fence longer than any tilde run.
+        local length = 3
+        for run in note.comment:gmatch("~+") do length = math.max(length, #run + 1) end
+        local fence = string.rep("~", length)
+        feedback = "Feedback:\n\n" .. fence .. "\n" .. note.comment .. "\n" .. fence
+      end
+      parts[#parts + 1] = "> " .. quote:gsub("\n", "\n> ") .. "\n\n" .. feedback
     end
     return table.concat(parts, "\n\n")
   end

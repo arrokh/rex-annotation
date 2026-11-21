@@ -134,7 +134,7 @@ export default function(pi) {
     ctx.ui.setEditorComponent((...args) => {
       const editor = factory(...args);
       queueMicrotask(() => {
-        const payload = "# Terminal annotations\\n\\n## 1\\n> a | b\\n> second\\n\\nComment:\\nhi there";
+        const payload = "# Terminal annotations\\n\\n> a | b\\n> second\\n\\nFeedback: hi there";
         let submissions = 0;
         editor.onSubmit = () => { submissions++; };
         editor.setClipboardMirrorPolicy("never");
@@ -256,7 +256,8 @@ export default function(pi) {
                         assert "[last]" not in picker_screen and "2026-11-10T" not in picker_screen, picker_screen
                         terminal(session, overlay, "write", {"data": "\r"})
                         wait_for(session, overlay, lambda s: "PI REPLY" in s and "LATEST HISTORY MESSAGE" in s)
-                        terminal(session, overlay, "write", {"data": "ggV\rbridge-end-to-end-note\x13"})
+                        terminal(session, overlay, "write", {"data": "ggV\rbridge-end-to-end-note"})
+                        subprocess.run(["rex", "send-key", "-s", session, "-b", overlay, "ctrl+enter"], check=True, timeout=10)
                         wait_for(session, overlay, lambda s: "bridge-end-to-end-note" in s)
                         terminal(session, overlay, "write", {"data": "s"})
                         wait_for(session, block, lambda s: "bridge-end-to-end-note" in s)
@@ -343,15 +344,16 @@ def run_overlay(clipboard=False, installed=False, leave_focus=False):
         comment = "why?\\nclarify"  # expected content, not a shell command
         if clipboard:
             comment += " " + os.environ["REX_ANNOTATE_CLIPBOARD_TOKEN"]
-        terminal(session, block, "write", {"data": "gg0v4l\r" + comment.replace("\\n", "\r") + "\x13"})
+        terminal(session, block, "write", {"data": "gg0v4l\r" + comment.replace("\\n", "\r")})
+        subprocess.run(["rex", "send-key", "-s", session, "-b", block, "ctrl+enter"], check=True, timeout=10)
         wait_for(session, block, lambda s: "why? clarify" in s)
         terminal(session, block, "write", {"data": "p"})
-        wait_for(session, block, lambda s: "# Terminal annotations" in s and "Comment:" in s)
+        wait_for(session, block, lambda s: "# Terminal annotations" in s and "Feedback:" in s)
         if clipboard:
             terminal(session, block, "write", {"data": "y"})
             wait_for(session, block, lambda s: "Copied annotations" in s)
             copied = subprocess.run(["/usr/bin/pbpaste"], capture_output=True, text=True, timeout=3)
-            expected = "# Terminal annotations\n\n## 1\n> alpha\n\nComment:\n" + comment.replace("\\n", "\n")
+            expected = "# Terminal annotations\n\n> alpha\n\nFeedback:\n\n~~~\n" + comment.replace("\\n", "\n") + "\n~~~"
             assert copied.stdout == expected, "Clipboard differs from preview payload"
         terminal(session, block, "write", {"data": "q"})  # back from preview
         if leave_focus:

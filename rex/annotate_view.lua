@@ -105,8 +105,8 @@ function M.open(snapshot, target, services, source_title, on_back)
     local width = math.max(1, vim.api.nvim_win_get_width(header_win))
     local help = wrap_cells(tostring(source_title or "SNAPSHOT"), width)
     local line = ""
-    local actions = { "v/V select", "Enter note", "n/N notes", "\\n/\\N search", "\\e edit", "m manage", "p preview",
-      "y copy", "s insert", "S send now", "\\w wrap" }
+    local actions = { "v/V select", "Enter note", "n/N notes", "\\n/\\N search", "Ctrl+E edit", "m manage", "p preview",
+      "y copy", "s insert", "S send now", "Ctrl+W wrap" }
     if on_back then actions[#actions + 1] = "Esc list" end
     actions[#actions + 1] = "q close"
     for _, action in ipairs(actions) do
@@ -235,7 +235,7 @@ function M.open(snapshot, target, services, source_title, on_back)
       return vim.tbl_extend("force", common, { row = 0, height = quote_height, focusable = false,
         title = width >= 28 and " Quote (PgUp/PgDn scroll) " or " Quote " }),
         vim.tbl_extend("force", common, { row = quote_height + 2, height = height,
-          title = width >= 34 and " Comment: ^S save / Esc then q " or " Comment ",
+          title = width >= 42 and " Comment: Ctrl+Enter save / Esc then q " or " Ctrl+Enter save ",
           footer = " ^Y Yes / ^N No " })
     end
     local quote_config, modal_config = layout()
@@ -277,7 +277,7 @@ function M.open(snapshot, target, services, source_title, on_back)
       finish()
       refresh()
     end
-    mapping(buf, { "i", "n" }, "<C-s>", guarded(function() submit(contents()) end))
+    mapping(buf, { "i", "n" }, "<C-CR>", guarded(function() submit(contents()) end))
     mapping(buf, { "i", "n" }, "<C-y>", guarded(function() submit("Yes") end))
     mapping(buf, { "i", "n" }, "<C-n>", guarded(function() submit("No") end))
     for _, key in ipairs({ "<PageUp>", "<PageDown>" }) do
@@ -384,12 +384,12 @@ function M.open(snapshot, target, services, source_title, on_back)
   end
   local next_note = guarded(function() jump(1) end)
   local prev_note = guarded(function() jump(-1) end)
-  for _, key in ipairs({ "n", "]a" }) do mapping(source, "n", key, next_note) end
-  for _, key in ipairs({ "N", "[a" }) do mapping(source, "n", key, prev_note) end
+  mapping(source, "n", "n", next_note)
+  mapping(source, "n", "N", prev_note)
   -- Preserve native search, including direction, count, and wrapscan.
   vim.keymap.set("n", "\\n", "n", { buffer = source, silent = true })
   vim.keymap.set("n", "\\N", "N", { buffer = source, silent = true })
-  mapping(source, "n", "\\e", guarded(edit_at_cursor))
+  mapping(source, "n", "<C-e>", guarded(edit_at_cursor))
   mapping(source, "x", "<CR>", guarded(comment_selection))
   mapping(source, "n", "<CR>", guarded(comment_current_line))
   mapping(source, "n", "m", function()
@@ -420,7 +420,7 @@ function M.open(snapshot, target, services, source_title, on_back)
     mapping(buf, "n", "s", guarded(function() deliver("insert") end))
     mapping(buf, "n", "S", guarded(function() deliver("send") end))
   end
-  mapping(source, "n", "\\w", guarded(function()
+  mapping(source, "n", "<C-w>", guarded(function()
     vim.wo[win].wrap = not vim.wo[win].wrap
     refresh_status()
   end))

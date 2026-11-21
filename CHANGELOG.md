@@ -2,6 +2,11 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.1.16
+
+- Use `Ctrl+E` to edit, `Ctrl+W` to toggle wrapping, and `Ctrl+Enter` to save a comment. Use `n` and `N` to jump between notes; remove the bracket aliases.
+- Shorten the Markdown payload to quote-and-feedback pairs while keeping multiline content.
+
 ## 0.1.15
 
 - Jump between annotations with `n` and `N`. Repeat Vim searches with `\n` and `\N` in reply detail.

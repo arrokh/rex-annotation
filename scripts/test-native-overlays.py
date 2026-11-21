@@ -240,13 +240,14 @@ def run(selected=None):
                     assert "private-id" not in screen and "2026-11-10T" not in screen, screen
                     LIVE.terminal(session, overlay, "write", {"data":"\r"})
                     detail = LIVE.wait_for(session, overlay, lambda s: "REPLY" in s and quote in s and "OLDER reply" not in s)
-                    for shortcut in ("v/V select", "Enter note", "m edit", "p preview", "y copy", "s insert", "S send now", "q close"):
+                    for shortcut in ("v/V select", "Enter note", "Ctrl+E edit", "m manage", "p preview", "y copy", "s insert", "S send now", "Ctrl+W wrap", "q close"):
                         assert shortcut in detail, (columns, rows, shortcut, detail)
                     if os.environ.get("REX_ANNOTATION_EVIDENCE_DIR"):
                         evidence = Path(os.environ["REX_ANNOTATION_EVIDENCE_DIR"])
                         evidence.mkdir(parents=True, exist_ok=True, mode=0o700)
                         (evidence / (launcher + "-" + str(columns) + "x" + str(rows) + ".txt")).write_text(detail)
-                    LIVE.terminal(session, overlay, "write", {"data":"ggV\rsynthetic note\x13"})
+                    LIVE.terminal(session, overlay, "write", {"data":"ggV\rsynthetic note"})
+                    subprocess.run(["rex", "send-key", "-s", session, "-b", overlay, "ctrl+enter"], check=True, timeout=10)
                     LIVE.wait_for(session, overlay, lambda s: "1 notes" in s)
                     if os.environ.get("REX_ANNOTATION_EVIDENCE_DIR"):
                         html = LIVE.terminal(session, overlay, "format", {"format":"html","unwrap":True})["content"]
@@ -256,7 +257,7 @@ def run(selected=None):
                         LIVE.wait_for(session, overlay, lambda s: "Insert into the ORIGINAL pane?" in s)
                         LIVE.terminal(session, overlay, "write", {"data":"i"})
                     LIVE.wait_until_closed(session, overlay)
-                    expected = ("# Terminal annotations\n\n## 1\n> " + quote + "\n\nComment:\nsynthetic note").encode()
+                    expected = ("# Terminal annotations\n\n> " + quote + "\n\nFeedback: synthetic note").encode()
                     sent = b"\x1b[200~" + expected + b"\x1b[201~" + (b"\r" if action == "S" else b"")
                     deadline = time.monotonic() + 3
                     while time.monotonic() < deadline and (not raw.exists() or raw.read_bytes() != sent):
