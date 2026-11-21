@@ -1,0 +1,155 @@
+<!doctype html>
+<!-- Disposable design probe: compare split, stack, and reader layouts with the same keyboard workflow. -->
+<html lang="en"><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Rex Annotate · Web prototype</title>
+<style>
+:root{color-scheme:light dark;--bg:light-dark(#f0f2f4,#171a20);--paper:light-dark(#fff,#20242b);--ink:light-dark(#202832,#edf1f7);--mute:light-dark(#516173,#aeb9c8);--edge:light-dark(#ccd5df,#444f60);--active:light-dark(#e0ebf7,#344861);--yes:light-dark(#d8e8dc,#354f42);--no:light-dark(#efdde3,#5a3e48)}[hidden]{display:none!important}*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.55 system-ui,sans-serif}button,input,textarea{font:inherit;color:inherit;background:var(--paper);border:1px solid var(--edge);border-radius:5px}button{cursor:pointer;padding:.24rem .65rem}button:hover,button[aria-current=true],button[aria-pressed=true]{background:var(--active)}button:disabled{opacity:.55;cursor:default}:focus-visible{outline:2px solid light-dark(#315e8b,#91bcea);outline-offset:2px}header,footer{display:flex;align-items:center;gap:.75rem;flex-wrap:wrap;padding:.8rem clamp(.8rem,3vw,2rem);border-bottom:1px solid var(--edge);background:var(--paper)}header small,.muted{color:var(--mute)}header small{margin-left:auto}main{display:grid;grid-template-columns:minmax(14rem,28%) minmax(0,1fr);min-height:65vh}aside{padding:1rem;border-right:1px solid var(--edge)}article{padding:1rem clamp(.8rem,4vw,3rem);min-width:0;background:var(--paper)}h1,h2,p{margin:0 0 .55rem}h1{font-size:1.25rem}h2{font-size:1rem}header h1{margin:0}.list button{width:100%;text-align:left;display:block;margin:.4rem 0;padding:.45rem .65rem}.list small{display:block;color:var(--mute)}#find{width:100%;padding:.35rem .55rem}.actions{display:flex;flex-wrap:wrap;gap:.4rem;margin:.65rem 0}.notes{max-width:74ch}.notes button{margin:.4rem .4rem 0 0}footer{border-top:1px solid var(--edge);border-bottom:0;justify-content:space-between}nav{display:flex;gap:.3rem;flex-wrap:wrap}dialog{color:var(--ink);background:var(--paper);border:1px solid var(--edge);border-radius:8px;width:min(38rem,calc(100% - 1.5rem));padding:1rem}dialog::backdrop{background:#1118}dialog textarea{display:block;width:100%;padding:.5rem}pre{white-space:pre-wrap;overflow-wrap:anywhere;max-height:45vh;overflow:auto}kbd{font-family:ui-monospace,monospace}body[data-layout=stack] main{display:block}body[data-layout=stack] aside{border-right:0;border-bottom:1px solid var(--edge)}body[data-layout=stack] .list{display:grid;grid-template-columns:repeat(auto-fit,minmax(12rem,1fr));gap:.4rem}body[data-layout=stack] .list button{margin:0}body[data-layout=reader] main,body[data-layout=reader] aside,body[data-layout=reader] article{display:block}body[data-layout=reader][data-screen=list] article,body[data-layout=reader][data-screen=detail] aside{display:none}@media(max-width:640px){main{display:block}aside{border-right:0;border-bottom:1px solid var(--edge)}header small{margin-left:0}article{padding:.8rem}body:not([data-layout=stack])[data-screen=list] article,body:not([data-layout=stack])[data-screen=detail] aside{display:none}}
+/* The active row stays visible without outlining each editor field in blue. */
+.list button[aria-current=true]:focus-visible{outline:none;border-color:var(--mute)}
+.markdown{max-width:74ch;border-block:1px solid var(--edge);padding:.8rem 0;overflow-wrap:anywhere}
+.markdown:focus-visible{outline:none;box-shadow:inset 2px 0 var(--mute);padding-left:.6rem}
+.markdown h3,.markdown h4,.markdown h5,.markdown h6{margin:1em 0 .4em}
+.markdown h3:first-child{margin-top:0}.markdown p{margin:0 0 .8rem}
+.markdown pre,.markdown blockquote{padding:.65rem .85rem;background:var(--bg);margin:.75rem 0}
+.markdown code{font: .92em ui-monospace,monospace}.markdown pre{overflow:auto}
+.markdown.nowrap{overflow:auto}
+.markdown.nowrap [data-block]{white-space:nowrap}
+.markdown.nowrap pre[data-block]{white-space:pre}
+.markdown [data-block]{border-radius:3px}
+.markdown [data-tone=comment]{background:var(--active)}
+.markdown [data-tone=yes]{background:var(--yes)}
+.markdown [data-tone=no]{background:var(--no)}
+.markdown:focus [data-current=true]{box-shadow:inset 2px 0 var(--mute)}
+.markdown [data-selected=true]{background:var(--active)}
+.markdown blockquote{white-space:pre-line}
+</style>
+<header><h1>Rex Annotate</h1><small>Web prototype · Sample replies only</small></header>
+<main><aside aria-label="Replies"><h2>Replies</h2><input id="find" type="search" placeholder="Filter replies  /" aria-label="Filter replies"><div class="list" id="list"></div></aside>
+<article aria-labelledby="title"><div class="actions"><button id="back">Replies</button><button id="help">Keyboard help</button></div><h2 id="title"></h2><div id="meta" class="muted" aria-live="polite"></div><div class="actions" id="tools"><button id="add">Note · Enter</button><button id="edit">Edit · Ctrl+E</button><button id="wrap" aria-pressed="true">Wrap · Ctrl+W</button><button id="preview">Preview · p</button></div><div id="reading-content" class="markdown" tabindex="0" aria-label="Formatted reply" hidden></div><div id="notes" class="notes"></div></article></main>
+<footer><nav aria-label="Prototype layout"><button data-layout="split">Split</button><button data-layout="stack">Stack</button><button data-layout="reader">Reader</button></nav><span id="message" class="muted" role="status">No data leaves this page.</span></footer>
+<dialog id="comment" aria-labelledby="comment-title"><h2 id="comment-title">Comment</h2><pre id="quote"></pre><textarea id="body" rows="4" aria-label="Comment text"></textarea><div class="actions"><button id="save">Save · Ctrl+Enter</button><button id="yes">Yes · Ctrl+Y</button><button id="no">No · Ctrl+N</button><button data-close="comment">Cancel</button></div></dialog>
+<dialog id="output" aria-labelledby="output-title"><h2 id="output-title">Feedback preview</h2><pre id="markdown"></pre><div class="actions"><button id="copy">Copy · y</button><button id="insert">Simulate Insert · s</button><button id="send">Simulate Send · S</button><button data-close="output">Back</button></div></dialog>
+<dialog id="keys" aria-labelledby="keys-title"><h2 id="keys-title">Keyboard help</h2><p><kbd>j/k</kbd> and <kbd>Enter</kbd>: browse and open. <kbd>/</kbd>: filter replies or search reply text; <kbd>\n / \N</kbd>: repeat line search.</p><p><kbd>h/j/k/l</kbd>, <kbd>w/b</kbd>: move. <kbd>v/V</kbd>: select characters or blocks. <kbd>Enter</kbd>: note. <kbd>n/N</kbd>: jump between notes. <kbd>Ctrl+E</kbd>: edit. <kbd>Ctrl+W</kbd>: wrap, if the host passes it through.</p><p><kbd>p</kbd>: preview. <kbd>y</kbd>: copy. <kbd>s/S</kbd>: simulate delivery. <kbd>Esc/q</kbd>: back. Browser bindings are a subset, not a full Vim engine.</p><button data-close="keys">Close</button></dialog>
+<script src="markdown.js"></script>
+<script>
+const $=id=>document.getElementById(id);
+const replies=[
+ {title:'Preserve the original pane',time:'Just now',lines:['# Preserve the original pane', '', 'The annotation panel should remember where the reply came from.','', '## Delivery rules', '- **Insert** only fills the draft.', '- **Send** submits it.', '', '> If the agent changes, keep the notes and stop delivery.', '', '```text', 'Reply → quote → feedback', '```', '', 'Keyboard check: select this line with V, then press Enter. Try a Unicode quote like café or 猫.']},
+ {title:'Make the reply easier to scan',time:'8 min ago',lines:['Use a compact reply list with timestamps and descriptive previews.', '', 'A wide detail pane gives code and tables room without moving the original terminal.', 'Keep line wrapping optional for dense output.']},
+ {title:'Check narrow panes',time:'27 min ago',lines:['At narrow widths, show one task at a time.','', 'Esc should return to the reply list, with the previous row still selected.', 'Do not clear drafts when changing layouts in the prototype.']}
+];
+let choice=0,index=-1,row=0,col=0,anchor=null,linewise=false,editing=null,span=null,wrap=true,needle='';
+const notes=replies.map(()=>[]);
+const clamp=(x,a,b)=>Math.max(a,Math.min(b,x));
+const graphemes=s=>[...new Intl.Segmenter().segment(s)].map(x=>x.index).concat(s.length);
+const notify=s=>{$('message').textContent=s;};
+
+const hits=()=>replies.map((r,i)=>({r,i})).filter(({r})=>r.title.toLowerCase().includes($('find').value.toLowerCase()));
+function renderList(){const list=$('list');list.replaceChildren();for(const {r,i} of hits()){const b=document.createElement('button');b.type='button';b.dataset.reply=i;b.setAttribute('aria-current',String(i===choice));b.textContent=r.title;const time=document.createElement('small');time.textContent=r.time+' · '+r.lines[0];b.append(time);b.onclick=()=>openReply(i);list.append(b);}if(!list.childElementCount)list.textContent='No replies match.';}
+function showList(){document.body.dataset.screen='list';renderList();$('list').querySelector('[aria-current=true]')?.focus();}
+const blocks=()=>$('reading-content').querySelectorAll('[data-block]');
+const rows=()=>Array.from(blocks(), block=>block.textContent);
+const order=(a,b)=>a.row<b.row||(a.row===b.row&&a.col<=b.col)?[a,b]:[b,a];
+function focusRow(scroll=true){
+ const nodes=blocks();
+ if(!nodes[row])return;
+ const [first,last]=order(anchor??{row,col},{row,col});
+ nodes.forEach((node,i)=>{
+   node.dataset.current=String(i===row);
+   node.dataset.selected=String(Boolean(anchor)&&i>=first.row&&i<=last.row);
+ });
+ $('reading-content').focus({preventScroll:true});
+ if(scroll)nodes[row].scrollIntoView({block:'nearest'});
+}
+function renderDetail(focus=true){
+ const root=$('reading-content');
+ $('notes').replaceChildren();
+ $('tools').hidden=root.hidden=index<0;
+ $('title').textContent=index<0?'Choose a reply':replies[index].title;
+ $('meta').textContent=index<0?'Select one from the list.':`Reply ${index+1} of ${replies.length} · ${notes[index].length} notes · ${wrap?'wrap':'nowrap'}`;
+ $('wrap').setAttribute('aria-pressed',String(wrap));
+ root.classList.toggle('nowrap',!wrap);
+ if(index<0)return;
+ renderFixtureMarkdown(root,replies[index].lines);
+ [...root.querySelectorAll('h3,h4,h5,h6,p,li,blockquote,pre')].forEach((block,i)=>{
+   block.dataset.block=i;
+   const match=notes[index].findLast(note=>i>=note.start&&i<=note.end);
+   if(match)block.dataset.tone=match.tone;
+ });
+ for(const [i,n] of notes[index].entries()){
+   const b=document.createElement('button');
+   b.textContent=`${i+1}. ${n.text.split('\n')[0]}`;
+   b.onclick=()=>{row=n.start;col=n.startCol;openComment(i);};
+   $('notes').append(b);
+ }
+ if(focus)focusRow();
+}
+function openReply(i){
+ if(i==null)return;
+ choice=index=i;row=col=0;anchor=null;linewise=false;needle='';
+ document.getSelection()?.removeAllRanges();
+ document.body.dataset.screen='detail';
+ renderList();renderDetail();
+}
+function pickSpan(){
+ const root=$('reading-content'), selection=document.getSelection(), quote=selection?.toString();
+ if(!anchor&&quote?.trim()&&selection.rangeCount){
+   const range=selection.getRangeAt(0);
+   if(root.contains(range.startContainer)&&root.contains(range.endContainer)){
+     const selected=[...blocks()].filter(block=>range.intersectsNode(block));
+     if(selected.length){
+       const first=selected[0],last=selected.at(-1);
+       const before=document.createRange();before.selectNodeContents(first);
+       let startCol=0;
+       if(first.contains(range.startContainer)){
+         before.setEnd(range.startContainer,range.startOffset);startCol=before.toString().length;
+       }
+       return {start:Number(first.dataset.block),end:Number(last.dataset.block),startCol,quote};
+     }
+   }
+ }
+ const lines=rows();
+ if(!anchor)return {start:row,end:row,startCol:0,quote:lines[row]??''};
+ const [first,last]=order(anchor,{row,col});
+ const selected=lines.slice(first.row,last.row+1);
+ if(!linewise){
+   const end=graphemes(lines[last.row]).find(x=>x>last.col)??last.col;
+   selected[selected.length-1]=selected.at(-1).slice(0,end);
+   selected[0]=selected[0].slice(first.col);
+ }
+ return {start:first.row,end:last.row,startCol:linewise?0:first.col,quote:selected.join('\n')};
+}
+$('reading-content').addEventListener('pointerdown',event=>{
+ const block=event.target.closest('[data-block]');
+ if(!block)return;
+ row=Number(block.dataset.block);col=0;anchor=null;linewise=false;
+ focusRow(false);
+});
+function openComment(i=null){if(index<0)return;editing=i;span=i==null?pickSpan():notes[index][i];if(!span.quote.trim()){notify('Select a non-blank quote.');return;}$('quote').textContent=span.quote;$('body').value=i==null?'':span.text;$('comment-title').textContent=i==null?'New comment':'Edit comment';$('comment').showModal();$('body').focus();}
+function save(text){if(!text.trim()){notify('Comment must not be blank.');$('body').focus();return;}const tone=/^yes$/i.test(text.trim())?'yes':/^no$/i.test(text.trim())?'no':'comment';const note={...span,text,tone};if(editing==null)notes[index].push(note);else notes[index][editing]=note;anchor=null;linewise=false;$('comment').close();renderDetail();notify('Note saved locally.');}
+function editNote(){if(index<0)return;const i=notes[index].findIndex(n=>row>=n.start&&row<=n.end);if(i<0)notify('No note in this block. Jump with n/N.');else openComment(i);}
+function jump(delta){if(index<0)return;const order=[...notes[index]].sort((a,b)=>a.start-b.start||a.startCol-b.startCol);if(!order.length){notify('No notes yet.');return;}const n=delta>0?order.find(n=>n.start>row)??order[0]:order.findLast(n=>n.start<row)??order.at(-1);row=n.start;col=n.startCol;anchor=null;linewise=false;focusRow();}
+function payload(){return index<0||!notes[index].length?'':'# Terminal annotations\n\n'+notes[index].map(n=>{const fence='~'.repeat(Math.max(3,...(n.text.match(/~+/g)??[]).map(s=>s.length+1)));return '> '+n.quote.replaceAll('\n','\n> ')+'\n\nFeedback:'+(n.text.includes('\n')?'\n\n'+fence+'\n'+n.text+'\n'+fence:' '+n.text);}).join('\n\n');}
+function preview(){const text=payload();if(!text){notify('Add a note first.');return;}$('markdown').textContent=text;$('output').showModal();}
+async function delivery(kind){const text=payload();if(!text){notify('Add a note first.');return;}if(kind==='Copy'){try{await navigator.clipboard.writeText(text);notify('Feedback copied.');}catch{notify('Clipboard unavailable. Open Preview to select and copy.');}}else notify(`${kind} simulated. No agent input was sent.`);if($('output').open)$('output').close();}
+function toggle(){if(index<0)return;wrap=!wrap;renderDetail();}
+function setLayout(layout){if(!['split','stack','reader'].includes(layout))layout='split';document.body.dataset.layout=layout;for(const b of document.querySelectorAll('button[data-layout]'))b.setAttribute('aria-pressed',String(b.dataset.layout===layout));}
+function stepSearch(dir){if(!needle||index<0)return;const lines=rows();for(let i=1;i<=lines.length;i++){const next=(row+i*dir+lines.length)%lines.length;const found=lines[next].toLowerCase().indexOf(needle.toLowerCase());if(found>=0){row=next;col=found;focusRow();return;}}notify('No matching reply block.');}
+$('find').oninput=()=>{if(!hits().some(x=>x.i===choice))choice=hits()[0]?.i??-1;renderList();};$('back').onclick=showList;$('add').onclick=()=>openComment();$('edit').onclick=editNote;$('wrap').onclick=toggle;$('preview').onclick=preview;$('save').onclick=()=>save($('body').value);$('yes').onclick=()=>save('Yes');$('no').onclick=()=>save('No');$('help').onclick=()=>$('keys').showModal();$('copy').onclick=()=>delivery('Copy');$('insert').onclick=()=>delivery('Insert');$('send').onclick=()=>delivery('Send');for(const b of document.querySelectorAll('[data-close]'))b.onclick=()=>$(b.dataset.close).close();for(const b of document.querySelectorAll('button[data-layout]'))b.onclick=()=>{setLayout(b.dataset.layout);const u=new URL(location.href);u.searchParams.set('variant',b.dataset.layout);history.replaceState(null,'',u);};
+let prefix=false;
+document.addEventListener('keydown',e=>{if(e.isComposing||e.metaKey||e.altKey)return;const key=e.key,ctrl=e.ctrlKey,target=e.target;const take=()=>e.preventDefault();if($('comment').open){if(ctrl&&['Enter','y','n'].includes(key)){take();save(key==='Enter'?$('body').value:key==='y'?'Yes':'No');}return;}if($('output').open){if(!ctrl&&['q','y','s','S'].includes(key)){take();if(key==='q')$('output').close();else delivery(key==='y'?'Copy':key==='s'?'Insert':'Send');}return;}if($('keys').open)return;
+ if(target===$('find')){if(key==='Enter'){take();openReply(choice>=0?choice:null);}else if(key==='Escape'){take();$('find').blur();showList();}return;}
+ if(document.body.dataset.screen==='list'){if(!ctrl&&['j','k','/','Enter'].includes(key)&&!(key==='Enter'&&target instanceof HTMLButtonElement)){take();if(key==='/')$('find').focus();else if(key==='Enter')openReply(choice>=0?choice:null);else{const items=hits();if(!items.length)return;choice=items[clamp(items.findIndex(x=>x.i===choice)+(key==='j'?1:-1),0,items.length-1)].i;showList();}}return;}
+ if(index<0)return;
+ if(ctrl){if(key==='e'||key==='w'){take();if(key==='e')editNote();else toggle();}return;}
+ if(prefix){prefix=false;if(key==='n'||key==='N'){take();stepSearch(key==='n'?1:-1);}return;}
+ if(key==='\\'){take();prefix=true;return;}
+ if(key==='Escape'&&anchor){take();anchor=null;linewise=false;focusRow();return;}
+ if(key==='Escape'||key==='q'){take();showList();return;}
+ if(key==='Enter'&&!(target instanceof HTMLButtonElement)){take();openComment();return;}
+ if(key==='/' ){take();const query=window.prompt('Find text in this reply',needle);if(query){needle=query;stepSearch(1);}return;}
+ if(['n','N','p','y','s','S','m'].includes(key)){take();if(key==='n'||key==='N')jump(key==='n'?1:-1);else if(key==='p')preview();else if(key==='m')$('notes').querySelector('button')?.focus();else delivery(key==='y'?'Copy':key==='s'?'Insert':'Send');return;}
+ if(key==='v'||key==='V'){take();document.getSelection()?.removeAllRanges();anchor={row,col};linewise=key==='V';focusRow();notify(linewise?'Block selection: move, then Enter.':'Character selection: move, then Enter.');return;}
+ if(['h','j','k','l','w','b','0','$'].includes(key)){take();const line=rows()[row],offsets=graphemes(line);if(key==='j'||key==='k'){row=clamp(row+(key==='j'?1:-1),0,rows().length-1);col=Math.min(col,rows()[row].length);}else if(key==='h')col=offsets.findLast(x=>x<col)??0;else if(key==='l')col=offsets.find(x=>x>col)??line.length;else if(key==='0'||key==='$')col=key==='0'?0:line.length;else{const starts=[...line.matchAll(/\S+/g)].map(m=>m.index);col=key==='w'?starts.find(x=>x>col)??line.length:starts.findLast(x=>x<col)??0;}focusRow();}
+});
+setLayout(new URLSearchParams(location.search).get('variant')??'split');showList();renderDetail(false);
+</script></html>
