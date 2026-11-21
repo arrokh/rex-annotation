@@ -10,10 +10,10 @@
 
 | Tool | How you get it |
 | --- | --- |
-| macOS and Rex, including the `rex` CLI | Install Rex separately |
+| Local macOS and Rex, including the `rex` CLI | Follow the [Rex installation guide](https://www.superlogical.com/rex/docs/installation) |
 | Neovim with `vim.system` and `getregion` (0.12.x tested) | Homebrew installs `neovim` |
 | Python 3.9+ | Homebrew installs `python@3.14` |
-| Pi, Codex CLI 0.167.1+, or Claude Code/CUX | Install only the agent CLIs you use |
+| Pi, Codex CLI 0.167.1+, or Claude Code/CUX | Install only what you use; see the [agent guides](../integrations/README.md#choose-an-agent) |
 
 **Neovim is required.** Classic `vi` and Vim are not fallbacks: the UI needs
 Neovim's Lua APIs, floating windows, and selection functions. Pi uses its normal
@@ -32,8 +32,9 @@ rex-annotation install &&
 rex-annotation status
 ```
 
-The [formula](https://github.com/arrokh/rex-annotation/blob/main/Formula/rex-annotation.rb) is in this repository. The explicit
-tap URL is needed because the repository is not named `homebrew-*`.
+Install [Homebrew](https://brew.sh/) first. The [formula](https://github.com/arrokh/rex-annotation/blob/main/Formula/rex-annotation.rb)
+is in this repository. The explicit tap URL is needed because the repository is
+not named `homebrew-*`.
 
 Homebrew installs program files and dependencies. The separate
 `rex-annotation install` command writes your integration settings. It detects
@@ -42,6 +43,10 @@ supported agent CLIs on PATH; you do not need to install all three agents.
 For an existing installation, use [upgrade steps](homebrew.md#install-or-upgrade).
 
 ## Source checkout
+
+Install the tools above yourself before running setup. With Homebrew, you can
+use `brew install neovim python@3.14` and make sure `python3` on PATH meets the
+minimum version. Source setup does not install dependencies for you.
 
 ```sh
 git clone https://github.com/arrokh/rex-annotation.git
@@ -130,17 +135,15 @@ Pi package whose extension is explicitly disabled is not reported healthy.
 | Symptom | Safe next step |
 | --- | --- |
 | CLI missing | Check PATH. Source links use `~/.local/bin`; Homebrew uses its bin directory. |
-| Rex action missing | Run `rex config check`, then `rex config reload`. This reloads Rex config, not agents. |
+| Shortcut does nothing | Try the Rex palette action **Annotate Agent Reply or Terminal Output**. If it is missing, run `rex config check`, then `rex config reload`. This reloads Rex config, not agents. |
 | Codex hooks not ready | Rerun `rex-annotation install`; it trusts only its own hooks. Upgrade unsupported Codex versions. Do not bypass explicit policy. |
 | Pi bridge not loaded | Start a new Pi process, or deliberately reload only after reviewing session-only auth effects. Existing processes keep their loaded extension. |
 | No native reply binding | Check the configuration-directory overrides used by setup and the agent. New processes should run normally in a Rex pane. |
-| Claude/CUX ambiguous branch | Update the plugin first. If it persists, report the exact error and pane/session metadata: the adapter cannot prove one conversation. Do not rewrite the transcript or choose a file by recency. |
-| History exceeds a limit | See [input limits](usage.md#privacy-and-limits); the plugin refuses partial history rather than silently truncating it. |
+| Claude/CUX ambiguous branch | Update the plugin first. If it persists, report the redacted error: the adapter cannot prove one conversation. Do not rewrite the transcript or choose a file by recency. |
+| Older replies are missing, or history exceeds a limit | See [input limits](usage.md#privacy-and-limits). Native readers only load recent history; oversized inputs can fail. |
 | Paste/Send timeout | Inspect the original draft before retrying. The operation may already have happened; automatic retries are disabled. |
 
-When reporting a problem, include `rex-annotation --version`, the agent name,
-error text, and the relevant status checks. Do not post credentials or an entire
-private transcript. [Open an issue](https://github.com/arrokh/rex-annotation/issues).
+Still stuck? See [what to include in a bug report](CONTRIBUTING.md#report-a-bug).
 
 ## Setup options
 

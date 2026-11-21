@@ -1,93 +1,51 @@
 # Rex Annotation
 
-**Quote an agent's reply, add comments, and send clear feedback from Neovim.**
+**Quote a coding agent’s reply and give feedback on the exact lines, without leaving Rex.**
 
-Runs inside [Rex](https://www.superlogical.com/rex) on macOS. Supports **Pi,
-Codex CLI, and Claude Code, including Claude launched through CUX**.
+Say an agent proposes a migration. Select the line that says “drop the old table,”
+add “keep it until the backfill is verified,” and insert the quote and comment
+into the original conversation’s draft. You can review the draft before sending.
 
-[Install](#install) · [Use](#use) · [Troubleshoot](docs/setup.md#common-fixes) ·
-[All docs](docs/README.md) · [Related projects](docs/related-tools.md)
+Rex Annotation is a keyboard-first plugin for [Rex](https://www.superlogical.com/rex)
+on **macOS**. It opens a Neovim annotation pane and supports **Pi, Codex CLI,
+and Claude Code (including CUX)**. Other terminal panes support copy-only annotation.
 
-## Install
+[Quick start](#quick-start) · [Usage](docs/usage.md) · [Troubleshooting](docs/setup.md#common-fixes) · [All docs](docs/README.md)
 
-```sh
-brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation &&
-brew install arrokh/rex-annotation/rex-annotation &&
-rex-annotation install &&
-rex-annotation status
-```
+[![Watch the 38-second walkthrough](docs/assets/rex-annotation-demo-cover.png)](docs/assets/rex-annotation-demo.mp4)
 
-Install **Rex and your chosen agent CLI** separately. Homebrew supplies Python
-and **Neovim**; classic `vi` and Vim are not compatible substitutes.
+The silent demo uses synthetic replies and does not make a model request.
 
-`rex-annotation install` configures the supported agents it finds on PATH. It
-trusts only its own Codex hooks and reloads **Rex configuration only**, never a
-running agent. No extra setup flags or manual hook approval are needed. Explicit
-hook-disable and organization policies are respected.
+## Quick start
 
-Already installed? See [upgrade steps](docs/homebrew.md#install-or-upgrade).
-Prefer a checkout? See [source setup](docs/setup.md#source-checkout).
+1. Install **Rex with its `rex` CLI**, **Homebrew**, and **one supported agent**.
+   See [requirements and supported versions](docs/setup.md#required-tools).
+2. Run these commands. Homebrew installs the plugin, Python, and Neovim;
+   `rex-annotation install` configures Rex and the supported agents it finds on PATH.
 
-## Video walkthrough
+   ```sh
+   brew tap arrokh/rex-annotation https://github.com/arrokh/rex-annotation &&
+   brew install arrokh/rex-annotation/rex-annotation &&
+   rex-annotation install &&
+   rex-annotation status
+   ```
 
-[![Watch the 38-second silent walkthrough][demo-cover]][demo-video]
+3. Open Rex and start a new `pi`, `codex`, `claude`, or `cux` process in a pane.
+   Once it has a reply, press **Ctrl+S, then o**. Pick a reply with `j` / `k`
+   and **Enter**.
+4. Press `v` or `V` to select text, then **Enter** to comment. Press **Enter**
+   again to save. Use `p` to preview and **Shift+Enter** to insert without
+   submitting. **Ctrl+Enter** sends immediately instead.
 
-[demo-cover]: docs/assets/rex-annotation-demo-cover.png
-[demo-video]: docs/assets/rex-annotation-demo.mp4
+[Install from source](docs/setup.md#source-checkout) · [Upgrade](docs/homebrew.md#install-or-upgrade) · [Full key reference](docs/usage.md#key-reference)
 
-Synthetic replies only; no agent session or model request is started.
+## Where to go next
 
-## Use
-
-1. Start `pi`, `codex`, `claude`, or `cux` normally in a Rex pane after setup.
-2. Press **Ctrl+S, then o**. Pick a reply with `j`/`k` and **Enter**.
-3. Select a quote with `v` or `V`, then **Enter** to comment. **Enter** saves the
-   comment. Enter without a selection comments on the current logical line.
-4. Choose what to do with the feedback:
-
-| Key | Result |
+| I want to… | Go to |
 | --- | --- |
-| `Shift+Enter` | Insert into the original agent's draft **without submitting** |
-| `Ctrl+Enter` | **Send immediately** to the original agent |
-| `p` / `y` | Preview / copy the feedback |
-| `m` | Edit or remove a saved note |
-| `q` | Close; confirm before discarding unfinished notes |
+| Check what setup changes or remove it | [Setup and troubleshooting](docs/setup.md) |
+| Set up a specific agent | [Agent guides](integrations/README.md#choose-an-agent) |
+| Understand what stays local and where feedback goes | [Privacy and limits](docs/usage.md#privacy-and-limits) |
+| Compare other review tools | [Related projects](docs/related-tools.md): [Herdr Annotate](https://github.com/plannotator/herdr-annotate), [Plannotator](https://github.com/backnotprop/plannotator), [Plannotator TUI](https://github.com/plannotator/plannotator-tui) |
 
-Successful insert or Send closes the annotation pane. A failure keeps your
-notes open. Codex/Claude/CUX must be at an editable prompt; `Shift+Enter` asks
-for confirmation before pasting. **`Ctrl+Enter` does not ask for a typed SEND.**
-
-The target is the saved pane and conversation, not whichever pane later gets
-focus. The plugin refuses ambiguous native history instead of guessing a
-session. Existing agent processes are not restarted by installation.
-
-[Full workflow and key reference](docs/usage.md) ·
-[Privacy and limits](docs/usage.md#privacy-and-limits)
-
-## Find the right guide
-
-| I want to… | Read |
-| --- | --- |
-| Browse all documentation | [Documentation index](docs/README.md) |
-| Install, check setup, or diagnose an error | [Setup and troubleshooting](docs/setup.md) |
-| Select text, manage notes, insert, or Send | [Usage](docs/usage.md) |
-| Understand Pi, Codex, or Claude/CUX setup | [Agent integration guide](integrations/README.md) |
-| Upgrade or understand Homebrew packaging | [Homebrew guide](docs/homebrew.md) |
-| Find code, run tests, or publish a release | [Development guide](docs/development.md) |
-| See what changed | [Changelog](CHANGELOG.md) |
-
-## Related projects
-
-- [Herdr Annotate](https://github.com/plannotator/herdr-annotate): terminal text,
-  document, and agent-reply review inside **Herdr**.
-- [Plannotator](https://github.com/backnotprop/plannotator): a local
-  **browser-based** review surface for plans, documents, artifacts, and code.
-- [Plannotator TUI](https://github.com/plannotator/plannotator-tui):
-  **terminal-based** Markdown and reply review; also used by Herdr Annotate's
-  Full document-review workflow.
-
-These are separate tools, not dependencies installed by Rex Annotation.
-[Which tool fits which workflow?](docs/related-tools.md)
-
-[Report a bug](https://github.com/arrokh/rex-annotation/issues) ·
-[Releases](https://github.com/arrokh/rex-annotation/releases) · [MIT license](LICENSE)
+[Report a bug](https://github.com/arrokh/rex-annotation/issues/new?template=bug_report.md) · [Contribute](docs/CONTRIBUTING.md) · [Security](docs/SECURITY.md) · [Changelog](CHANGELOG.md) · [Releases](https://github.com/arrokh/rex-annotation/releases) · [MIT license](LICENSE)

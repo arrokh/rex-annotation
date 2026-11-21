@@ -69,7 +69,7 @@ class HomebrewDocsTests(unittest.TestCase):
         self.assertIn("title must exactly match the tag", text)
 
     def test_install_examples_do_not_run_setup_after_failed_brew(self):
-        for path, heading in (("README.md", "## Install"), ("docs/setup.md", "## Homebrew"),
+        for path, heading in (("README.md", "## Quick start"), ("docs/setup.md", "## Homebrew"),
                               ("docs/homebrew.md", "## Install or upgrade")):
             script = self.code_block(path, heading)
             for failed in (["brew", "tap", TAP, "https://github.com/arrokh/rex-annotation"],

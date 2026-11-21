@@ -5,8 +5,9 @@
 
 ## Normal setup
 
-Plain `rex-annotation install` detects Claude and CUX. To select this integration
-explicitly:
+Install [Claude Code](https://code.claude.com/docs/en/quickstart), or use your
+existing CUX setup. Plain `rex-annotation install` detects Claude and CUX.
+To select this integration explicitly:
 
 ```sh
 rex-annotation install --claude

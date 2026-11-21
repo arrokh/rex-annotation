@@ -5,7 +5,8 @@
 
 ## Normal setup
 
-Plain `rex-annotation install` detects Pi. To select Pi explicitly:
+Install [Pi](https://pi.dev/) first. Plain `rex-annotation install` detects Pi.
+To select Pi explicitly:
 
 ```sh
 rex-annotation install --pi
@@ -40,8 +41,8 @@ only a new annotation pane, not a Pi reload.
   without submission and regardless of Pi-vim Normal/Insert mode. Existing
   draft text is preserved; the result is checked through `getEditorText`.
 - `send`: explicitly send the annotation payload through `pi.sendUserMessage`.
-  **Neovim uppercase S now sends immediately, without typing SEND.** It may
-  start a model response. This path is never used by lowercase s or by capture.
+  In the reply view or preview, **Ctrl+Enter sends immediately** and may start
+  a model response. **Shift+Enter** only inserts a draft; capture does not send.
 - `snapshot` and `status`: bounded compatibility/read-only operations.
 
 Inserts and sends require the original Rex session/block/PID, the same Pi

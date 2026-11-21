@@ -8,7 +8,9 @@
 ## Annotate a reply
 
 1. Start your agent normally in a Rex pane after [setup](setup.md).
-2. Press **Ctrl+S, then o** to open the reply picker.
+2. In the pane with the reply, press **Ctrl+S, then o** (two steps, not a
+   single chord). You can also use the Rex palette action **Annotate Agent
+   Reply or Terminal Output**.
 3. Use `j`/`k` or `/` search, then **Enter** to open a reply. Newest replies are
    first. Rows show a compact relative time and preview, not internal IDs. Press
    **Esc** in a reply to return to the list; unfinished annotations require
@@ -28,6 +30,22 @@ Reply detail styles Markdown headings, lists, quotes, fenced code, simple inline
 The pane is centered and keeps the source pane's width. Its help header wraps
 on narrow panes without changing the reply text or quote positions. Closing it
 restores source focus only if you have not deliberately moved elsewhere.
+
+## What feedback looks like
+
+For example, select a line in an agent’s plan and add a comment. Press `p`
+to review the Markdown before inserting it:
+
+```markdown
+# Terminal annotations
+
+> Drop the old table after the migration.
+
+Feedback: Keep it until the backfill is verified.
+```
+
+To add more feedback, select another quote in the same reply and save a note.
+All saved notes for that reply are included in the payload.
 
 ## Key reference
 
@@ -82,10 +100,11 @@ The plugin does not select a different session or retry a side effect for you.
 
 ## Other terminal panes
 
-An unrecognized terminal pane can be opened as an immutable terminal snapshot.
-This path is **copy only**: it does not acquire an agent-reply binding or enable
-insertion/Send. A terminal snapshot may contain any captured terminal text, not
-only assistant replies. Older discarded scrollback cannot be recovered.
+In a regular shell pane, use the same shortcut to annotate a read-only snapshot
+of the terminal text. Select and comment as usual, then press `y` to copy the
+notes. This path is **copy only**: there is no bound agent to receive the text.
+A snapshot may include any captured terminal text, not just assistant replies.
+Older discarded scrollback cannot be recovered.
 
 ## Requirements
 

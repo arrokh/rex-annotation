@@ -34,7 +34,7 @@ agents. The scoped source-checkout examples below are optional; ordinary
 From this checkout:
 
 ```sh
-python3 scripts/install.py --codex
+./bin/rex-annotation install --codex
 codex
 ```
 
@@ -72,7 +72,7 @@ Use the native hooks for automatic current-session tracking.
 Install once, then use the normal command in a Rex pane:
 
 ```sh
-python3 scripts/install.py --claude
+./bin/rex-annotation install --claude
 claude
 ```
 
@@ -205,12 +205,12 @@ formats. Format and lifecycle references:
 
 `npm test` runs synthetic adapter/hook/skill/lifecycle tests. Optional
 `python3 scripts/test-native-overlays.py` compiles two tiny fake executables and
-runs Codex/Claude automatic hook binding → picker → Enter comment → s/S flows in
-disposable Rex sessions without `REX_PID`, `REX_ANNOTATION_ROOT`, or wrappers.
-It verifies exact UTF-8 paste, no Return for s, exactly one Return for S,
-auto-close, source focus, and owned-session cleanup. Claude/CUX fixtures include
-streamed parallel tools, mixed tool-result/context records, and opaque progress
-links, not only a linear chat.
+runs automatic Codex/Claude hook binding, reply selection, commenting, and
+Shift+Enter / Ctrl+Enter delivery in disposable Rex sessions without `REX_PID`,
+`REX_ANNOTATION_ROOT`, or wrappers. It verifies exact UTF-8 paste, no Return for
+insert, exactly one Return for Send, auto-close, source focus, and owned-session
+cleanup. Claude/CUX fixtures include streamed parallel tools, mixed
+tool-result/context records, and opaque progress links, not only a linear chat.
 `--agent claude` or `--agent cux` runs a focused check. It never invokes a real
 coding agent or sends a model request.
 
