@@ -675,8 +675,9 @@ function M.pick_replies(replies, target, services, agent_title, conversation, st
   local note_marks = vim.api.nvim_create_namespace("rex-annotate-picker-notes")
   local function note_count(count) return count .. (count == 1 and " note" or " notes") end
   local function picker_status()
+    local count = drafts.count()
     vim.wo[win].statusline = " Rex Annotate · " .. statusline_text(agent_title)
-      .. " active branch · " .. note_count(drafts.count()) .. " · %l/%L "
+      .. " active branch · " .. note_count(count) .. (count > 0 and " · Ctrl+Enter send" or "") .. " · %l/%L "
   end
   local function refresh_note_mark(row)
     local index = row - 2
@@ -747,6 +748,15 @@ function M.pick_replies(replies, target, services, agent_title, conversation, st
     local row = vim.api.nvim_win_get_cursor(win)[1]
     open_reply(by_row[row] and row or 3):manage(true)
   end))
+  local function deliver_draft(kind, payload)
+    if not deliver_payload(services, kind, payload) then return end
+    drafts.mark_clean()
+    if kind == "copy" then notify("Copied annotations") else quit() end
+  end
+  mapping(buf, "n", "<C-CR>", guarded(function()
+    if drafts.count() == 0 then notify("No annotations yet"); return end
+    deliver_draft("send", drafts.format())
+  end))
   mapping(buf, "n", "p", guarded(function()
     local saved_view = vim.fn.winsaveview()
     local winbar, wrap = vim.wo[win].winbar, vim.wo[win].wrap
@@ -756,9 +766,7 @@ function M.pick_replies(replies, target, services, agent_title, conversation, st
       vim.wo[win].winbar, vim.wo[win].wrap = winbar, wrap
       vim.fn.winrestview(saved_view)
     end, guarded(function(kind)
-      if not deliver_payload(services, kind, payload) then return end
-      drafts.mark_clean()
-      if kind == "copy" then notify("Copied annotations") else quit() end
+      deliver_draft(kind, payload)
     end))
     vim.wo[win].winbar = " Feedback preview %<· Esc back · y copy · Shift+Enter insert · Ctrl+Enter send"
     vim.wo[win].wrap = true

@@ -30,8 +30,9 @@
 
 Reply detail styles Markdown headings, lists, quotes, fenced code, simple inline formatting, and pipe tables. In Normal mode, supported inline delimiters and link destinations are hidden for reading. Visual mode reveals them on the active line; annotations still quote the original Markdown.
 
-The pane opens centered at half the source pane’s width. Resize or maximize
-it in Rex and the UI adjusts to the available space. The help header wraps
+The pane opens centered at half the Rex window’s width, like one pane in an
+even side-by-side split, regardless of the source pane’s width. Resize or
+maximize it in Rex and the UI adjusts to the available space. The help header wraps
 without changing the reply text or quote positions. Closing it
 restores source focus only if you have not deliberately moved elsewhere.
 
@@ -71,6 +72,7 @@ to the screen you opened the note list from.
 | --- | --- | --- |
 | Reply picker | `j` / `k`, `/`, Enter | Move, search, and open a reply |
 | Reply picker | `p` | Preview the combined draft; `q` / Esc returns to the picker |
+| Reply picker | `Ctrl+Enter` | Send the combined draft immediately if there are annotations |
 | Reply picker | `m` | Open the note list across all replies |
 | Reply view | `hjkl`, `w` / `b`, `/` | Native Vim movement and search |
 | Reply view | `Ctrl+W` | Toggle line wrapping on/off |
