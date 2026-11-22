@@ -67,7 +67,7 @@ test('socket binds exact pane and current session; insert preserves newlines wit
     sessionManager: { getSessionId: () => session, getBranch: () => branch },
     ui: { getEditorText: () => editor, setEditorText: text => { editor = text; } } };
   const bridge = await startBridge(() => ctx, { root, pid: process.pid, session: 'session:test', block: 'block:test',
-    sendMessage: text => sent.push(text) });
+    sendMessage: (text, options) => sent.push({ text, options }) });
   const binding = { version: 1, pid: process.pid, session: 'session:test', block: 'block:test' };
   assert.equal((await lstat(root)).mode & 0o777, 0o700);
   assert.equal((await lstat(bridge.path)).mode & 0o777, 0o600);
@@ -84,15 +84,15 @@ test('socket binds exact pane and current session; insert preserves newlines wit
     assert.equal((await request(bridge.path, { ...binding, op: 'insert', sessionId: session, text: payload })).ok, true);
     assert.equal(editor, 'existing draft\n' + payload);
     assert.equal((await request(bridge.path, { ...binding, op: 'send', sessionId: session, text: payload })).ok, true);
-    assert.deepEqual(sent, [payload]);
+    assert.deepEqual(sent, [{ text: payload, options: { deliverAs: 'followUp' } }]);
     session = 'conversation-two';
     assert.equal((await request(bridge.path, { ...binding, op: 'insert', sessionId: 'conversation-one', text: 'wrong session' })).ok, false);
     assert.equal((await request(bridge.path, { ...binding, op: 'insert', sessionId: session, text: 'bad\x1b[201~' })).ok, false);
     assert.equal((await request(bridge.path, { ...binding, op: 'send', sessionId: 'conversation-one', text: 'wrong session' })).ok, false);
     idle = false;
     assert.equal((await request(bridge.path, { ...binding, op: 'insert', sessionId: session, text: 'busy' })).ok, false);
-    assert.equal((await request(bridge.path, { ...binding, op: 'send', sessionId: session, text: 'busy' })).ok, false);
-    assert.deepEqual(sent, [payload]);
+    assert.equal((await request(bridge.path, { ...binding, op: 'send', sessionId: session, text: 'busy' })).ok, true);
+    assert.deepEqual(sent, [payload, 'busy'].map(text => ({ text, options: { deliverAs: 'followUp' } })));
     assert.equal((await request(bridge.path, { ...binding, block: 'block:other', op: 'snapshot' })).ok, false);
     assert.equal(editor, 'existing draft\n' + payload);
   } finally {

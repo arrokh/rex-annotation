@@ -740,12 +740,14 @@ test("launcher uses explicit source window, local client and an isolated Neovim 
   local host = "host:local"
   local client = { info = { platform = "macos" }, principal = { transport = "unix" } }
   local encoded
+  local queued, active_ios = {}, true
   local bindings = {}
   _G.rex = {
     action = function(definition)
       if definition.name == "annotate_open" then action = definition end
     end,
     bind = function(chord, name) bindings[chord] = name end,
+    client = { queue = function(action, args) queued[#queued + 1] = { action, args } end },
     json = { encode = function(target) encoded = target; return vim.json.encode(target) end },
     exec = function() return { ok = true } end,
     call = function(method, args)
@@ -754,6 +756,10 @@ test("launcher uses explicit source window, local client and an isolated Neovim 
       if method == "server.status" then return { host_id = "host:local" } end
       if method == "client.inspect" then return { client = client } end
       if method == "session.list_blocks" then return { blocks = {} } end
+      if method == "session.view" and client.info.platform == "ios" then
+        return { active_window_id = active_ios and "window:notes" or "window:source",
+          windows = { { window_id = "window:source" }, { window_id = "window:notes" } } }
+      end
       if method == "session.view" then return { windows = { { window_id = "window:source", layers = { {
         layout = { block_id = "block:source", rect = { 0.625, 0, 0.375, 1 } },
       } } } } } end
@@ -785,6 +791,7 @@ test("launcher uses explicit source window, local client and an isolated Neovim 
   assert(command_text:find(root, 1, true), "launcher must resolve helpers from the standalone rex/ directory")
   assert(command_text:find("block:source", 1, true))
   eq(true, encoded.clipboard)
+  eq({}, queued)
   local ios_context = { session_id = "session:test", block_id = "block:source", client_id = "client:ipad" }
   client = { info = { platform = "ios" }, principal = { transport = "tailscale", kind = "tailscale" } }
   action.run(ios_context, {})
@@ -795,6 +802,10 @@ test("launcher uses explicit source window, local client and an isolated Neovim 
   eq(false, encoded.clipboard)
   eq("client:ipad", encoded.client_id)
   eq("block:source", encoded.block_id)
+  eq({ { "client.tab.goto", { index = 2 } } }, queued)
+  active_ios = false
+  action.run(ios_context, {})
+  eq(1, #queued)
   local function refused(message)
     created = nil
     local ok, err = pcall(action.run, ios_context, {})

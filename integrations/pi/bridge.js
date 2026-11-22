@@ -94,13 +94,16 @@ export async function startBridge(getContext, options) {
           socket.end(JSON.stringify({ ok: true, pid, sessionId }));
         } else if (request.op === 'insert' || request.op === 'send') {
           if (request.sessionId !== sessionId) throw new Error('Pi conversation changed; open a new annotation view');
-          if (!ctx.isIdle() || ctx.hasPendingMessages()) throw new Error('Pi is busy; wait for its editable prompt');
+          if (request.op === 'insert' && (!ctx.isIdle() || ctx.hasPendingMessages()))
+            throw new Error('Pi is busy; wait for its editable prompt');
           const payload = request.text;
           if (typeof payload !== 'string' || !payload.trim() || Buffer.byteLength(payload) > LIMIT || /[\x00-\x08\x0b-\x1f\x7f]/.test(payload))
             throw new Error('Invalid annotation text');
           if (request.op === 'send') {
             if (typeof sendMessage !== 'function') throw new Error('Pi send action is unavailable');
-            sendMessage(payload); // Only the explicit Rex Send action reaches this path.
+            // Pi sends immediately when idle or queues a follow-up while streaming.
+            // Always pass the mode so a transition to streaming cannot steer the active turn.
+            sendMessage(payload, { deliverAs: 'followUp' });
             socket.end(JSON.stringify({ ok: true, pid, sessionId }));
           } else {
             const combined = ctx.ui.getEditorText() + payload;

@@ -2,6 +2,11 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.13
+
+- Ask the Rex iPhone/iPad client to select the new Annotations tab after opening it. If the client cannot switch, the tab is still available manually.
+- Send annotations to busy Pi sessions as a follow-up, without interrupting the active turn. Inserting into a draft still requires an idle editor.
+
 ## 0.2.12
 
 - Open annotations in a dedicated tab on iPhone and iPad to avoid relying on floating-pane input focus. Mac still uses a floating pane.
