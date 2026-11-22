@@ -13,8 +13,11 @@
    Reply or Terminal Output**.
 3. Use `j`/`k` or `/` search, then **Enter** to open a reply. Newest replies are
    first. Rows show a compact relative time and preview, not internal IDs. Press
-   **Esc** in a reply to return to the list; unfinished annotations require
-   confirmation before they are discarded.
+   **Esc** in a reply to return to the list without losing saved notes.
+   **[Last opened]** marks the reply
+   that was newest the previous time you opened this conversation’s picker.
+   The marker stays put when you go back from a reply. It only updates when
+   you open a new annotation pane, and is hidden if that reply is unavailable.
 4. Select a quote with `v` or `V`, then **Enter** to write a comment. Without a
    selection, Enter uses the current logical line, including a hard newline
    when one exists.
@@ -44,8 +47,13 @@ to review the Markdown before inserting it:
 Feedback: Keep it until the backfill is verified.
 ```
 
-To add more feedback, select another quote in the same reply and save a note.
-All saved notes for that reply are included in the payload.
+To add more feedback, select another quote or press **Esc** to choose a
+different reply. Saved notes stay in the pane. The picker shows `[1 note]` or
+`[2 notes]` beside replies with saved notes. Preview, copy, insert, and Send
+use the combined draft. When there are notes on multiple replies, the draft
+groups them newest first; reply numbers refer to positions in the picker (the
+newest reply is 1). `m` edits or removes notes for the current reply only.
+Closing the pane warns about feedback that has not been copied or delivered.
 
 ## Key reference
 
@@ -54,9 +62,10 @@ All saved notes for that reply are included in the payload.
 | Reply picker | `j` / `k`, `/`, Enter | Move, search, and open a reply |
 | Reply view | `hjkl`, `w` / `b`, `/` | Native Vim movement and search |
 | Reply view | `Ctrl+W` | Toggle line wrapping on/off |
-| Reply view | `Esc` | Return to the reply list; confirm before discarding unfinished annotations |
+| Reply view | `Esc` | Return to the reply list and keep saved notes |
 | Reply view | `v` / `V`, then Enter | Comment on characters / logical lines |
 | Reply view | Enter without a selection | Comment on the current logical line |
+| Reply view (Normal mode) | `Ctrl+Y` / `Ctrl+N` | Save `Yes` / `No` on the current logical line without opening the editor or sending |
 | Comment editor | `Enter` / `Shift+Enter` | Save comment / add a newline in Insert mode |
 | Comment editor | `Ctrl+Y` / `Ctrl+N` | Save `Yes` / `No` in place of the editor text |
 | Comment editor | `PgUp` / `PgDn` | Scroll the read-only quote |
@@ -126,6 +135,9 @@ See [required tools](setup.md#required-tools) for installation details.
   snapshots cap at 4 MiB.
 - Native registrations store private IDs, paths, and process identity, not copied
   replies or feedback. Pi uses a private UID/PID-local Unix socket.
+- The **Last opened** marker persists locally under
+  `$XDG_STATE_HOME/rex-annotation/last-opened` (default: `~/.local/state`).
+  It stores only hashed conversation and reply identifiers, not text or notes.
 - Delivery rechecks the saved Rex pane, process, and conversation. It never
   targets whichever pane happens to have focus; unknown or changed targets fail.
 - Force-closing a pane can discard its temporary notes without a warning.

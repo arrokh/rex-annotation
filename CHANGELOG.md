@@ -2,6 +2,12 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.4
+
+- Mark the previously newest reply as **Last opened** for each conversation. The marker stays fixed while navigating the open pane.
+- Keep annotations across replies in one draft, and show note counts beside annotated replies in the picker.
+- Press `Ctrl+Y` or `Ctrl+N` in reply detail to annotate the current line with `Yes` or `No` without opening the comment editor or sending feedback.
+
 ## 0.2.3
 
 - Open long Claude sessions when the retained transcript starts with a tool result whose call was outside the read window.

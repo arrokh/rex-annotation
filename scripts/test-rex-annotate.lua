@@ -162,33 +162,96 @@ test("reply picker shows relative time and preview without IDs or absolute dates
   vim.api.nvim_buf_delete(picker.picker, { force = true })
 end)
 
-test("reply view back confirms before discarding unfinished annotations", function()
+test("last-opened reply is per conversation and frozen until the picker is reopened", function()
   local view = dofile(root .. "annotate_view.lua")
-  local quits = 0
-  local picker = view.pick_replies({ { timestamp = "invalid", text = "reply" } },
-    { block_id = "b" }, { quit = function() quits = quits + 1 end })
-  vim.fn.feedkeys(vim.keycode("<CR>"), "xt")
-  local session = picker.editor
-  session.draft:add("reply", "note", { 1, 0, 1, 5, mode = "v" })
+  local state = vim.fn.tempname()
+  local function open(agent, conversation, ids)
+    local replies = vim.tbl_map(function(id) return { id = id, text = "Reply " .. id } end, ids)
+    return view.pick_replies(replies, { block_id = "b" }, {}, agent, conversation, state)
+  end
+  local function markers(picker)
+    return vim.tbl_filter(function(line) return line:find("[Last opened]", 1, true) end,
+      vim.api.nvim_buf_get_lines(picker.picker, 0, -1, false))
+  end
+  local function close(picker) vim.api.nvim_buf_delete(picker.picker, { force = true }) end
+  local ok, err = pcall(function()
+    local picker = open("Pi", "thread", { "A", "B" })
+    eq({}, markers(picker))
+    close(picker)
+    picker = open("Pi", "thread", { "A", "B", "C", "D" })
+    eq({ "     ?  [Last opened] Reply B" }, markers(picker))
+    for _, row in ipairs({ 3, 6, 5 }) do
+      assert(picker.select(row):close(false, true))
+      eq({ "     ?  [Last opened] Reply B" }, markers(picker))
+    end
+    close(picker)
+    picker = open("Pi", "thread", { "A", "B", "C", "D" })
+    eq({ "     ?  [Last opened] Reply D" }, markers(picker))
+    close(picker)
+    for _, scope in ipairs({ {"Pi", "other"}, {"Codex", "thread"}, {"Pi", "thread"} }) do
+      picker = open(scope[1], scope[2], { "A", "B" })
+      eq({}, markers(picker)) -- Other conversations/agents and absent replies never match.
+      close(picker)
+    end
+  end)
+  vim.fn.delete(state, "rf")
+  assert(ok, err)
+end)
+
+test("notes across replies survive Back and preview and insert as one draft", function()
+  local view = dofile(root .. "annotate_view.lua")
+  local quits, inserted = 0, nil
+  local picker = view.pick_replies({ { text = "older" }, { text = "newest" } },
+    { block_id = "b" }, {
+      insert_requires_confirmation = false,
+      insert = function(payload) inserted = payload end,
+      quit = function() quits = quits + 1 end,
+    })
+  local function note_marks()
+    local ns = vim.api.nvim_get_namespaces()["rex-annotate-picker-notes"]
+    return vim.tbl_map(function(mark) return { mark[2], mark[4].virt_text[1][1] } end,
+      vim.api.nvim_buf_get_extmarks(picker.picker, ns, 0, -1, { details = true }))
+  end
+  eq({}, note_marks())
+  local older = picker.select(4)
+  local range = { 1, 0, 1, 5, mode = "v" }
+  local id = older.draft:add("older", "second", range)
+  local extra = older.draft:add("older", "extra", range)
+  assert(older:close(false, true))
+  eq({ { 3, "[2 notes] " } }, note_marks())
+  older = picker.select(4)
+  older.draft:remove(extra)
+  assert(older:close(false, true))
+  eq({ { 3, "[1 note] " } }, note_marks())
+  assert(vim.wo[0].statusline:find("1 note ·", 1, true))
+  older = picker.select(4)
+  older.draft:remove(id)
+  assert(older:close(false, true))
+  eq({}, note_marks())
+  older = picker.select(4)
+  older.draft:add("older", "second", range)
+  assert(older:close(false, true))
+  local newest = picker.select(3)
+  eq(0, #newest.draft.notes)
+  newest.draft:add("newest", "first", { 1, 0, 1, 6, mode = "v" })
+  assert(newest:close(false, true))
+  eq({ { 2, "[1 note] " }, { 3, "[1 note] " } }, note_marks())
 
   local original_confirm = vim.fn.confirm
-  local prompt
-  vim.fn.confirm = function(message) prompt = message; return 1 end
-  eq(false, session:close(false, true))
+  vim.fn.confirm = function(message) eq("Discard unfinished annotations?", message); return 1 end
+  local quit = vim.api.nvim_get_autocmds({ event = "QuitPre", buffer = picker.picker })[1]
+  local ok, err = pcall(quit.callback)
   vim.fn.confirm = original_confirm
-  eq("Discard unfinished annotations?", prompt)
-  eq(session.source, vim.api.nvim_get_current_buf())
-  eq(true, vim.api.nvim_buf_is_valid(session.source))
-  eq(true, vim.api.nvim_buf_is_valid(picker.picker))
+  assert(not ok and tostring(err):find("Annotations kept open", 1, true))
 
-  vim.fn.confirm = function(message) prompt = message; return 2 end
-  eq(true, session:close(false, true))
-  vim.fn.confirm = original_confirm
-  eq("Discard unfinished annotations?", prompt)
-  eq(picker.picker, vim.api.nvim_get_current_buf())
-  eq(false, vim.api.nvim_buf_is_valid(session.source))
-  eq(0, quits)
-  vim.fn.feedkeys("q", "xt")
+  older = picker.select(4)
+  eq(1, #older.draft.notes)
+  local payload = "# Terminal annotations\n\n## Reply 1\n\n> newest\n\nFeedback: first"
+    .. "\n\n## Reply 2\n\n> older\n\nFeedback: second"
+  vim.fn.feedkeys("p", "xt")
+  eq(payload, table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n"))
+  vim.fn.feedkeys(vim.keycode("<S-CR>"), "xt")
+  eq(payload, inserted)
   eq(1, quits)
   vim.api.nvim_buf_delete(picker.picker, { force = true })
 end)
@@ -568,6 +631,26 @@ test("normal Enter opens the current logical line as a newline-inclusive default
   vim.fn.feedkeys(vim.keycode("<CR>") .. "explain" .. vim.keycode("<CR>"), "xt")
   eq("current line\n", session.draft.notes[1].quote)
   eq({ 2, 0, 3, 0 }, vim.list_slice(session.draft.notes[1].range, 1, 4))
+  session:close(true)
+end)
+
+test("normal Ctrl+Y and Ctrl+N save current-line notes without opening the editor or delivering", function()
+  local view = dofile(root .. "annotate_view.lua")
+  local deliveries = 0
+  local function deliver() deliveries = deliveries + 1 end
+  local session = view.open("café\nlast", { block_id = "b" }, { copy = deliver, insert = deliver, send = deliver })
+  vim.fn.feedkeys(vim.keycode("<C-y>"), "xt")
+  eq(session.source, vim.api.nvim_get_current_buf())
+  eq("café\n", session.draft.notes[1].quote)
+  eq("Yes", session.draft.notes[1].comment)
+  eq({ 1, 0, 2, 0, mode = "V" }, session.draft.notes[1].range)
+  vim.api.nvim_win_set_cursor(0, { 2, 2 })
+  vim.fn.feedkeys(vim.keycode("<C-n>"), "xt")
+  eq(session.source, vim.api.nvim_get_current_buf())
+  eq("last", session.draft.notes[2].quote)
+  eq("No", session.draft.notes[2].comment)
+  eq({ 2, 0, 2, 4, mode = "V" }, session.draft.notes[2].range)
+  eq(0, deliveries)
   session:close(true)
 end)
 
