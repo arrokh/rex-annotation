@@ -30,8 +30,9 @@
 
 Reply detail styles Markdown headings, lists, quotes, fenced code, simple inline formatting, and pipe tables. In Normal mode, supported inline delimiters and link destinations are hidden for reading. Visual mode reveals them on the active line; annotations still quote the original Markdown.
 
-The pane is centered and keeps the source pane's width. Its help header wraps
-on narrow panes without changing the reply text or quote positions. Closing it
+The pane opens centered at half the source pane’s width. Resize or maximize
+it in Rex and the UI adjusts to the available space. The help header wraps
+without changing the reply text or quote positions. Closing it
 restores source focus only if you have not deliberately moved elsewhere.
 
 ## What feedback looks like
@@ -56,8 +57,9 @@ newest reply is 1). Closing the pane warns about feedback that has not been copi
 
 ## Manage notes
 
-Press `m` in a reply or on a highlighted reply in the picker to open its note
-list. Move with `j` / `k` and press **Enter** to edit. The original quote stays
+Press `m` in the picker or in any reply to see all notes in this pane, grouped
+by reply in newest-first order. `p` previews the same combined feedback.
+Move with `j` / `k` and press **Enter** to edit. The original quote stays
 visible and cannot be edited. Save with **Enter** to return to the note list
 without losing your place. Press `x`, then `x` to remove the selected note;
 `q` or Esc cancels the confirmation. Outside confirmation, `q` or Esc returns
@@ -69,7 +71,7 @@ to the screen you opened the note list from.
 | --- | --- | --- |
 | Reply picker | `j` / `k`, `/`, Enter | Move, search, and open a reply |
 | Reply picker | `p` | Preview the combined draft; `q` / Esc returns to the picker |
-| Reply picker | `m` | Open the note list for the highlighted reply |
+| Reply picker | `m` | Open the note list across all replies |
 | Reply view | `hjkl`, `w` / `b`, `/` | Native Vim movement and search |
 | Reply view | `Ctrl+W` | Toggle line wrapping on/off |
 | Reply view | `Esc` | Return to the reply list and keep saved notes |
@@ -84,7 +86,7 @@ to the screen you opened the note list from.
 | Reply view | `\n` / `\N` | Repeat the last Vim search in the same / opposite direction |
 | Reply view | `Ctrl+E` | Edit the annotation you jumped to or the one under the cursor |
 | Reply view (Normal mode) | `x`, then `x` | Remove the newest annotation on the current logical line. Press `q` or Esc to cancel |
-| Reply view | `m` | Open the note list for the current reply |
+| Reply view | `m` | Open the note list across all replies |
 | Note list | `j` / `k`, `Enter`, `x`, `q` / Esc | Move, edit, request removal, or go back |
 | Reply view | `p` | Preview the exact Markdown; `q` / Esc returns |
 | Reply view | `y` | Copy the Markdown to the macOS clipboard; stay open |

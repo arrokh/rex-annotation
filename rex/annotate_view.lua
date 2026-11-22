@@ -156,7 +156,7 @@ function M.open(snapshot, target, services, source_title, on_back, reply_drafts,
   local function refresh_header()
     if closed or not vim.api.nvim_win_is_valid(header_win) or not vim.api.nvim_win_is_valid(win) then return end
     local width = math.max(1, vim.api.nvim_win_get_width(header_win))
-    local help = wrap_cells(manager and "ANNOTATIONS · CURRENT REPLY" or tostring(source_title or "SNAPSHOT"), width)
+    local help = wrap_cells(manager and "ANNOTATIONS" or tostring(source_title or "SNAPSHOT"), width)
     local line = ""
     local actions
     if manager then
@@ -444,9 +444,9 @@ function M.open(snapshot, target, services, source_title, on_back, reply_drafts,
     cursor = vim.api.nvim_win_get_cursor(win)
     jumped = { id = note.id, row = cursor[1], col = cursor[2] }
   end
-  local function edit_note(note, updated)
+  local function edit_note(note, updated, owner)
     comment(note.quote, note.comment, function(value)
-      draft:edit(note.id, value)
+      (owner or draft):edit(note.id, value)
       if updated then updated() end
     end)
   end
@@ -491,13 +491,20 @@ function M.open(snapshot, target, services, source_title, on_back, reply_drafts,
   mapping(source, "n", "<C-y>", guarded(function() comment_current_line("Yes") end))
   mapping(source, "n", "<C-n>", guarded(function() comment_current_line("No") end))
   function session:manage(return_to_picker)
-    if #draft.notes == 0 then notify("No annotations yet"); return end
+    if (reply_drafts and reply_drafts.count() or #draft.notes) == 0 then notify("No annotations yet"); return end
     local view = vim.fn.winsaveview()
     local wrap, number = vim.wo[win].wrap, vim.wo[win].number
+    local entries
     local function rows()
       local result = {}
-      for _, note in ipairs(draft.notes) do
-        result[#result + 1] = string.format("[%d] L%d:%d  %s", note.id, note.range[1], note.range[2] + 1,
+      entries = reply_drafts and reply_drafts.entries() or {}
+      if not reply_drafts then
+        for _, note in ipairs(draft.notes) do entries[#entries + 1] = { note = note, owner = draft } end
+      end
+      for _, entry in ipairs(entries) do
+        local note = entry.note
+        local prefix = entry.reply and ("Reply " .. entry.reply .. " · ") or ""
+        result[#result + 1] = prefix .. string.format("[%d] L%d:%d  %s", note.id, note.range[1], note.range[2] + 1,
           note.comment:gsub("%s+", " "))
       end
       return #result > 0 and result or { "No annotations left. Press q or Esc to go back." }
@@ -528,13 +535,13 @@ function M.open(snapshot, target, services, source_title, on_back, reply_drafts,
       end
     end
     mapping(buf, "n", "<CR>", guarded(function()
-      local note = draft.notes[vim.api.nvim_win_get_cursor(win)[1]]
-      if note then edit_note(note, update) end
+      local entry = entries[vim.api.nvim_win_get_cursor(win)[1]]
+      if entry then edit_note(entry.note, update, entry.owner) end
     end))
     mapping(buf, "n", "x", guarded(function()
-      local note = draft.notes[vim.api.nvim_win_get_cursor(win)[1]]
-      if note and confirm_removal(note) then
-        draft:remove(note.id)
+      local entry = entries[vim.api.nvim_win_get_cursor(win)[1]]
+      if entry and confirm_removal(entry.note) then
+        entry.owner:remove(entry.note.id)
         update()
         refresh()
       end
@@ -722,7 +729,7 @@ function M.pick_replies(replies, target, services, agent_title, conversation, st
       vim.wo[win].conceallevel = picker_options.conceallevel
       vim.wo[win].concealcursor = picker_options.concealcursor
       vim.wo[win].winbar = picker_options.winbar
-      refresh_note_mark(row)
+      for index = 3, #lines do refresh_note_mark(index) end
       picker_status()
       vim.api.nvim_win_set_cursor(win, selected_cursor)
       vim.api.nvim_set_current_win(win)
@@ -736,10 +743,9 @@ function M.pick_replies(replies, target, services, agent_title, conversation, st
     return open_reply(vim.api.nvim_win_get_cursor(win)[1])
   end))
   mapping(buf, "n", "m", guarded(function()
+    if drafts.count() == 0 then notify("No annotations yet"); return end
     local row = vim.api.nvim_win_get_cursor(win)[1]
-    assert(by_row[row], "Select a reply to manage its annotations")
-    if drafts.count(row - 2) == 0 then notify("No annotations yet"); return end
-    open_reply(row):manage(true)
+    open_reply(by_row[row] and row or 3):manage(true)
   end))
   mapping(buf, "n", "p", guarded(function()
     local saved_view = vim.fn.winsaveview()

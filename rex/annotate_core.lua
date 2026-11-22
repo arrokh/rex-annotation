@@ -66,6 +66,18 @@ function M.reply_drafts(block_id, reply_count)
       for _, draft in pairs(drafts) do count = count + #draft.notes end
       return count
     end,
+    entries = function()
+      local result = {}
+      for index = 1, reply_count do
+        local owner = drafts[index]
+        if owner then
+          for _, note in ipairs(owner.notes) do
+            result[#result + 1] = { reply = index, owner = owner, note = note }
+          end
+        end
+      end
+      return result
+    end,
     dirty = function()
       for _, draft in pairs(drafts) do if draft.dirty then return true end end
       return false
@@ -114,8 +126,8 @@ function M.overlay_bounds(view, target)
   assert(rect and #rect == 4, "Source pane geometry is unavailable; focus the target and retry")
   for _, value in ipairs(rect) do assert(type(value) == "number", "Invalid source pane geometry") end
   assert(rect[3] > 0 and rect[4] > 0, "Source pane has no visible area")
-  -- Keep the source pane's width/height, but center the overlay in the Rex window.
-  local width, height = rect[3], rect[4] * 0.9
+  -- Start at half the source width; Rex owns resizing the resulting overlay.
+  local width, height = rect[3] * 0.5, rect[4] * 0.9
   return { (1 - width) / 2, (1 - height) / 2, width, height }
 end
 
