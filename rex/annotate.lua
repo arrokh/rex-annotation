@@ -33,7 +33,7 @@ local function local_target(ctx)
   return {
     session_id = ctx.session_id, block_id = ctx.block_id,
     window_id = source.window_id, client_id = ctx.client_id, clipboard = local_mac,
-  }, source
+  }, source, ios
 end
 
 local function executable(name)
@@ -49,7 +49,7 @@ local function executable(name)
 end
 
 local function open_annotation(ctx)
-  local target, source = local_target(ctx)
+  local target, source, full_width = local_target(ctx)
   local key = ctx.session_id .. "/" .. ctx.block_id
   if pending[key] then error("An annotation view is already opening", 0) end
   pending[key] = true
@@ -65,7 +65,7 @@ local function open_annotation(ctx)
     if not core_file then error("Missing plugin helper " .. core_path .. "; reinstall rex-annotation", 0) end
     core_file:close()
     local core = dofile(core_path)
-    local bounds = core.overlay_bounds(call("session.view", { session_id = ctx.session_id }), target)
+    local bounds = core.overlay_bounds(call("session.view", { session_id = ctx.session_id }), target, full_width)
     local target_json = rex.json.encode(target)
     local program = executable("nvim")
     local view = directory .. "annotate_view.lua"

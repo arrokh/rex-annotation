@@ -30,9 +30,10 @@
 
 Reply detail styles Markdown headings, lists, quotes, fenced code, simple inline formatting, and pipe tables. In Normal mode, supported inline delimiters and link destinations are hidden for reading. Visual mode reveals them on the active line; annotations still quote the original Markdown.
 
-The pane opens centered at half the Rex window’s width, like one pane in an
+On Mac, the pane opens centered at half the Rex window’s width, like one pane in an
 even side-by-side split, regardless of the source pane’s width. Resize or
-maximize it in Rex and the UI adjusts to the available space. The help header wraps
+maximize it in Rex and the UI adjusts to the available space. On iPhone and
+iPad, the pane opens at the full Rex window width by default. The help header wraps
 without changing the reply text or quote positions. Closing it
 restores source focus only if you have not deliberately moved elsewhere.
 
