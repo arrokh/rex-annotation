@@ -2,6 +2,11 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.12
+
+- Open annotations in a dedicated tab on iPhone and iPad to avoid relying on floating-pane input focus. Mac still uses a floating pane.
+- Add a physical O key binding alongside the existing `Command+Shift+O` binding. Physical iPad keyboard behavior has not yet been verified.
+
 ## 0.2.11
 
 - Add `Command+Shift+O` as a direct shortcut to open annotations, including with a hardware keyboard on iPad. Keep `Ctrl+S`, then `o` available.

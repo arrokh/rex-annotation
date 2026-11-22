@@ -758,6 +758,7 @@ test("launcher uses explicit source window, local client and an isolated Neovim 
         layout = { block_id = "block:source", rect = { 0.625, 0, 0.375, 1 } },
       } } } } } end
       if method == "session.new_layer" then created = args; return { layer_id = "layer:owned", block_ids = { "block:owned" } } end
+      if method == "session.new_window" then created = args; return { window_id = "window:notes", block_ids = { "block:owned" } } end
       if method == "session.disown_block" then eq({ "block:owned" }, args.block_ids); return {} end
       error(method)
     end,
@@ -767,6 +768,7 @@ test("launcher uses explicit source window, local client and an isolated Neovim 
   dofile(root .. "annotate.lua")
   eq("annotate_open", bindings["ctrl+s>o"])
   eq("annotate_open", bindings["cmd+shift+o"])
+  eq("annotate_open", bindings["cmd+shift+[KeyO]"])
   eq(nil, bindings["ctrl+s>shift+o"])
   eq(nil, bindings["ctrl+s>shift+a"])
   eq(nil, bindings["ctrl+s>a"])
@@ -786,7 +788,10 @@ test("launcher uses explicit source window, local client and an isolated Neovim 
   local ios_context = { session_id = "session:test", block_id = "block:source", client_id = "client:ipad" }
   client = { info = { platform = "ios" }, principal = { transport = "tailscale", kind = "tailscale" } }
   action.run(ios_context, {})
-  bounds_eq({ 0, 0.05, 1, 0.9 }, created.bounds)
+  eq("Annotations", created.window_label)
+  eq(true, created.focus)
+  eq(nil, created.bounds)
+  eq(true, encoded.separate_tab)
   eq(false, encoded.clipboard)
   eq("client:ipad", encoded.client_id)
   eq("block:source", encoded.block_id)
@@ -1023,6 +1028,15 @@ test("exit restores the captured target only while this overlay and window still
   source.block_id = "replacement"
   eq(false, core.restore_focus(call, target, "overlay"))
   eq({}, focused)
+  source.block_id = "target"
+  target.separate_tab = true
+  window.focused_block_id = "target"
+  view.windows[2] = { window_id = "notes", focused_block_id = "overlay" }
+  view.active_window_id = "notes"
+  eq(true, core.restore_focus(call, target, "overlay"))
+  eq({ { session_id = "s", block_id = "target" } }, focused)
+  view.active_window_id = "w"
+  eq(false, core.restore_focus(call, target, "overlay"))
 end)
 
 test("copy and insert receive identical multiline Unicode and pipe content", function()
