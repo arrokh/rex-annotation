@@ -336,8 +336,8 @@ def run_overlay(clipboard=False, installed=False, leave_focus=False):
         overlay = next(item for item in opened_window["layers"] if item["layer_id"] == layer["layer_id"])
         source_rect = opened_window["layers"][0]["layout"]["split"]["before"]["rect"]
         bounds = overlay["bounds"]
-        if abs(bounds[2] - source_rect[2]) > 1e-9 or abs(bounds[0] - (1 - bounds[2]) / 2) > 1e-9 or abs(bounds[1] - (1 - bounds[3]) / 2) > 1e-9:
-            regressions.append(f"Overlay {bounds} must be centered and retain target width {source_rect[2]}")
+        if abs(bounds[2] - source_rect[2] / 2) > 1e-9 or abs(bounds[0] - (1 - bounds[2]) / 2) > 1e-9 or abs(bounds[1] - (1 - bounds[3]) / 2) > 1e-9:
+            regressions.append(f"Overlay {bounds} must be centered at half the target width {source_rect[2] / 2}")
         wait_for(session, block, lambda s: "SNAPSHOT" in s and "alpha beta" in s)
         duplicate = invoke_annotation(root, session, source, installed)
         assert duplicate.returncode != 0 and "already has an annotation view" in duplicate.stderr

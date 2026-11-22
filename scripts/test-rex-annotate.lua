@@ -227,7 +227,7 @@ test("notes across replies survive Back and preview and insert as one draft", fu
   vim.api.nvim_win_set_cursor(0, { 4, 0 })
   vim.fn.feedkeys("m", "xt")
   local manager = vim.api.nvim_get_current_buf()
-  eq({ "[" .. id .. "] L1:1  second", "[" .. extra .. "] L1:1  extra" },
+  eq({ "Reply 2 · [" .. id .. "] L1:1  second", "Reply 2 · [" .. extra .. "] L1:1  extra" },
     vim.api.nvim_buf_get_lines(0, 0, -1, false))
   vim.fn.feedkeys("jxxq", "xt")
   eq(picker.picker, vim.api.nvim_get_current_buf())
@@ -238,7 +238,7 @@ test("notes across replies survive Back and preview and insert as one draft", fu
   vim.fn.feedkeys("m" .. vim.keycode("<CR>"), "xt")
   eq({ "second" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
   vim.fn.feedkeys(vim.keycode("<CR>"), "xt")
-  eq({ "[" .. id .. "] L1:1  second" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
+  eq({ "Reply 2 · [" .. id .. "] L1:1  second" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
   vim.fn.feedkeys("xxq", "xt")
   eq(picker.picker, vim.api.nvim_get_current_buf())
   eq({}, note_marks())
@@ -250,6 +250,13 @@ test("notes across replies survive Back and preview and insert as one draft", fu
   newest.draft:add("newest", "first", { 1, 0, 1, 6, mode = "v" })
   assert(newest:close(false, true))
   eq({ { 2, "[1 note] " }, { 3, "[1 note] " } }, note_marks())
+  vim.api.nvim_win_set_cursor(0, { 3, 0 })
+  vim.fn.feedkeys("m", "xt")
+  eq({ "Reply 1 · [1] L1:1  first", "Reply 2 · [3] L1:1  second" },
+    vim.api.nvim_buf_get_lines(0, 0, -1, false))
+  vim.fn.feedkeys("j" .. vim.keycode("<CR><Esc>") .. "gg0Cedited" .. vim.keycode("<CR>") .. "q", "xt")
+  eq({ 3, 0 }, vim.api.nvim_win_get_cursor(0))
+  eq(picker.picker, vim.api.nvim_get_current_buf())
 
   local original_confirm = vim.fn.confirm
   vim.fn.confirm = function(message) eq("Discard unfinished annotations?", message); return 1 end
@@ -259,7 +266,7 @@ test("notes across replies survive Back and preview and insert as one draft", fu
   assert(not ok and tostring(err):find("Annotations kept open", 1, true))
 
   local payload = "# Terminal annotations\n\n## Reply 1\n\n> newest\n\nFeedback: first"
-    .. "\n\n## Reply 2\n\n> older\n\nFeedback: second"
+    .. "\n\n## Reply 2\n\n> older\n\nFeedback: edited"
   local cursor = vim.api.nvim_win_get_cursor(0)
   vim.fn.feedkeys("p", "xt")
   eq(payload, table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n"))
@@ -733,7 +740,7 @@ test("launcher uses explicit source window, local client and an isolated Neovim 
   action.run({ session_id = "session:test", block_id = "block:source", client_id = "client:local" }, {})
   eq("window:source", created.window_id)
   eq("session:test", created.session_id)
-  bounds_eq({ 0.3125, 0.05, 0.375, 0.9 }, created.bounds)
+  bounds_eq({ 0.40625, 0.05, 0.1875, 0.9 }, created.bounds)
   local options = created.layout.block.options
   eq("none", options.shell)
   eq(false, options.login)
@@ -914,7 +921,7 @@ test("closing a comment window cannot strand the editor or silently lose edits",
   session:close(true)
 end)
 
-test("overlay is centered in the Rex window while retaining nested/floating target dimensions", function()
+test("overlay is centered at half the width of nested, floating, or zoomed sources", function()
   local target = { session_id = "s", window_id = "w", block_id = "target" }
   local window = { window_id = "w", layers = {
     { kind = "tiled", layout = { split = {
@@ -926,13 +933,13 @@ test("overlay is centered in the Rex window while retaining nested/floating targ
     } } },
   } }
   local bounds = core.overlay_bounds({ windows = { { window_id = "unrelated" }, window } }, target)
-  for i, expected in ipairs({ 0.2, 0.1625, 0.6, 0.675 }) do assert(math.abs(bounds[i] - expected) < 1e-10) end
+  for i, expected in ipairs({ 0.35, 0.1625, 0.3, 0.675 }) do assert(math.abs(bounds[i] - expected) < 1e-10) end
   window.layers = { { kind = "floating", bounds = { 0.2, 0.1, 0.45, 0.6 },
     layout = { block_id = "target", rect = { 0.2, 0.1, 0.45, 0.6 } } } }
   bounds = core.overlay_bounds({ windows = { window } }, target)
-  for i, expected in ipairs({ 0.275, 0.23, 0.45, 0.54 }) do assert(math.abs(bounds[i] - expected) < 1e-10) end
+  for i, expected in ipairs({ 0.3875, 0.23, 0.225, 0.54 }) do assert(math.abs(bounds[i] - expected) < 1e-10) end
   window.zoomed_block_id = "target"
-  bounds_eq({ 0, 0.05, 1, 0.9 }, core.overlay_bounds({ windows = { window } }, target))
+  bounds_eq({ 0.25, 0.05, 0.5, 0.9 }, core.overlay_bounds({ windows = { window } }, target))
   eq(false, pcall(core.overlay_bounds, { windows = {} }, target))
 end)
 

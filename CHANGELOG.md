@@ -2,6 +2,11 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.7
+
+- Manage notes across all replies with `m`, from the picker or any reply. `p` previews the combined feedback.
+- Open the annotation pane at half the source pane’s width by default; the interface reflows when resized.
+
 ## 0.2.6
 
 - Open a keyboard-navigable note list with `m`. Edit a selected note with Enter, or remove it with `x` and confirmation. Saving returns to the note list without closing the pane.
