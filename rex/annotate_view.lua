@@ -46,6 +46,53 @@ local function guarded(fn)
   end
 end
 
+local function deliver_payload(services, kind, payload)
+  assert(payload ~= "", "Add an annotation first")
+  if kind == "copy" then
+    assert(services.copy, "Clipboard is unavailable")
+    services.copy(payload)
+  elseif kind == "send" then
+    assert(services.send, "Explicit Send is unavailable; copy or insert instead")
+    services.send(payload)
+  else
+    assert(services.insert, "Insertion is unavailable; copy instead")
+    if services.insert_requires_confirmation ~= false
+      and vim.fn.confirm("Insert into the ORIGINAL pane? Ensure its agent is at an editable prompt, not a dialog.\n"
+        .. "No Return will be sent. Background process changes can still race this check.", "&Cancel\n&Insert", 1) ~= 2 then return false end
+    services.insert(payload)
+  end
+  return true
+end
+
+local function manage_notes(draft, edit, removed)
+  if #draft.notes == 0 then notify("No annotations yet"); return end
+  vim.ui.select(draft.notes, { prompt = "Annotations", format_item = function(note)
+    return "[" .. note.id .. "] L" .. note.range[1] .. ":" .. (note.range[2] + 1) .. " " .. note.comment:gsub("\n", " ")
+  end }, function(note)
+    if not note then return end
+    vim.ui.select({ "Edit", "Remove" }, { prompt = "Annotation " .. note.id }, guarded(function(choice)
+      if choice == "Edit" then edit(note)
+      elseif choice == "Remove" then draft:remove(note.id); removed() end
+    end))
+  end)
+end
+
+local function preview_buffer(win, payload, back, attempt)
+  assert(payload ~= "", "Add an annotation first")
+  local buf = scratch(vim.split(payload, "\n", { plain = true }))
+  vim.api.nvim_win_set_buf(win, buf)
+  local function close()
+    back()
+    vim.api.nvim_buf_delete(buf, { force = true })
+  end
+  mapping(buf, "n", "q", close)
+  mapping(buf, "n", "<Esc>", close)
+  mapping(buf, "n", "y", function() attempt("copy") end)
+  mapping(buf, "n", "<S-CR>", function() attempt("insert") end)
+  mapping(buf, "n", "<C-CR>", function() attempt("send") end)
+  return buf
+end
+
 function M.open(snapshot, target, services, source_title, on_back, reply_drafts, reply_index)
   vim.o.modeline = false
   vim.o.shada = ""
@@ -116,7 +163,7 @@ function M.open(snapshot, target, services, source_title, on_back, reply_drafts,
     local width = math.max(1, vim.api.nvim_win_get_width(header_win))
     local help = wrap_cells(tostring(source_title or "SNAPSHOT"), width)
     local line = ""
-    local actions = { "v/V select", "Enter note", "Ctrl+Y/N Yes/No", "n/N notes", "\\n/\\N search", "Ctrl+E edit", "m manage", "p preview",
+    local actions = { "v/V select", "Enter note", "Ctrl+Y/N Yes/No", "n/N notes", "\\n/\\N search", "Ctrl+E edit", "x remove", "m manage", "p preview",
       "y copy", "Shift+Enter insert", "Ctrl+Enter send", "Ctrl+W wrap" }
     if on_back then actions[#actions + 1] = "Esc list" end
     actions[#actions + 1] = "q close"
@@ -214,25 +261,13 @@ function M.open(snapshot, target, services, source_title, on_back, reply_drafts,
     return true
   end
   local function deliver(kind)
-    local payload = session:payload()
-    assert(payload ~= "", "Add an annotation first")
+    if not deliver_payload(services, kind, session:payload()) then return end
     if kind == "copy" then
-      assert(services.copy, "Clipboard is unavailable")
-      services.copy(payload)
       if reply_drafts then reply_drafts.mark_clean() else draft.dirty = false end
       notify("Copied annotations")
       return
-    elseif kind == "send" then
-      assert(services.send, "Explicit Send is unavailable; copy or insert instead")
-      services.send(payload)
-      draft.notes, draft.next_id, draft.dirty = {}, 0, false
-    else
-      assert(services.insert, "Insertion is unavailable; copy instead")
-      if services.insert_requires_confirmation ~= false
-        and vim.fn.confirm("Insert into the ORIGINAL pane? Ensure its agent is at an editable prompt, not a dialog.\n"
-          .. "No Return will be sent. Background process changes can still race this check.", "&Cancel\n&Insert", 1) ~= 2 then return end
-      services.insert(payload)
     end
+    if kind == "send" then draft.notes, draft.next_id, draft.dirty = {}, 0, false end
     session:close(true)
   end
   local function attempt_delivery(kind)
@@ -423,6 +458,26 @@ function M.open(snapshot, target, services, source_title, on_back, reply_drafts,
     end
     if match then edit_note(match) else notify("No annotation here; jump with n or N") end
   end
+  local function remove_on_line()
+    local row = vim.api.nvim_win_get_cursor(win)[1]
+    for index = #draft.notes, 1, -1 do
+      local note = draft.notes[index]
+      local range = note.range
+      local last = range[3] - (range[4] == 0 and 1 or 0)
+      if row >= range[1] and row <= last then
+        vim.cmd.redraw()
+        vim.api.nvim_echo({ { "Remove note [" .. note.id .. "]? x confirm · q/Esc cancel", "Question" } }, false, {})
+        local key = vim.fn.getcharstr()
+        vim.api.nvim_echo({}, false, {})
+        if key == "x" then
+          draft:remove(note.id)
+          refresh()
+        end
+        return
+      end
+    end
+    notify("No annotation on this line")
+  end
   local next_note = guarded(function() jump(1) end)
   local prev_note = guarded(function() jump(-1) end)
   mapping(source, "n", "n", next_note)
@@ -431,38 +486,18 @@ function M.open(snapshot, target, services, source_title, on_back, reply_drafts,
   vim.keymap.set("n", "\\n", "n", { buffer = source, silent = true })
   vim.keymap.set("n", "\\N", "N", { buffer = source, silent = true })
   mapping(source, "n", "<C-e>", guarded(edit_at_cursor))
+  mapping(source, "n", "x", guarded(remove_on_line))
   mapping(source, "x", "<CR>", guarded(comment_selection))
   mapping(source, "n", "<CR>", guarded(comment_current_line))
   mapping(source, "n", "<C-y>", guarded(function() comment_current_line("Yes") end))
   mapping(source, "n", "<C-n>", guarded(function() comment_current_line("No") end))
-  mapping(source, "n", "m", function()
-    if #draft.notes == 0 then notify("No annotations yet"); return end
-    vim.ui.select(draft.notes, { prompt = "Annotations", format_item = function(note)
-      return "[" .. note.id .. "] L" .. note.range[1] .. ":" .. (note.range[2] + 1) .. " " .. note.comment:gsub("\n", " ")
-    end }, function(note)
-      if not note then return end
-      vim.ui.select({ "Edit", "Remove" }, { prompt = "Annotation " .. note.id }, guarded(function(choice)
-        if choice == "Edit" then edit_note(note)
-        elseif choice == "Remove" then draft:remove(note.id); refresh() end
-      end))
-    end)
-  end)
+  session.edit_note = edit_note
+  mapping(source, "n", "m", function() manage_notes(draft, edit_note, refresh) end)
   local function preview_payload()
-    local payload = session:payload()
-    assert(payload ~= "", "Add an annotation first")
-    preview = scratch(vim.split(payload, "\n", { plain = true }))
-    local buf = preview
-    vim.api.nvim_win_set_buf(win, buf)
-    local function back()
+    preview = preview_buffer(win, session:payload(), function()
       vim.api.nvim_win_set_buf(win, source)
-      vim.api.nvim_buf_delete(buf, { force = true })
       preview = nil
-    end
-    mapping(buf, "n", "q", back)
-    mapping(buf, "n", "<Esc>", back)
-    mapping(buf, "n", "y", function() attempt_delivery("copy") end)
-    mapping(buf, "n", "<S-CR>", function() attempt_delivery("insert") end)
-    mapping(buf, "n", "<C-CR>", function() attempt_delivery("send") end)
+    end, attempt_delivery)
   end
   mapping(source, "n", "<C-w>", guarded(function()
     vim.wo[win].wrap = not vim.wo[win].wrap
@@ -541,7 +576,7 @@ function M.pick_replies(replies, target, services, agent_title, conversation, st
   local heading = agent_title == "Pi" and "PI REPLIES" or agent_title .. " REPLIES"
   assert(type(replies) == "table" and #replies > 0,
     "No visible assistant replies in the active " .. agent_title .. " session")
-  local lines = { "j/k move · Enter opens the selected reply · / search · q close", "" }
+  local lines = { "j/k move · Enter open · p preview · m manage · / search · q close", "" }
   local by_row = {}
   for index = #replies, 1, -1 do
     local reply = replies[index]
@@ -556,19 +591,23 @@ function M.pick_replies(replies, target, services, agent_title, conversation, st
     lines[#lines + 1] = string.format("%6s  %s", relative_time(reply.timestamp), excerpt)
     by_row[#lines] = reply
   end
-  -- Take one snapshot per pane. Returning from a reply reuses this buffer.
+  local buf = scratch(lines)
+  -- Take one snapshot per pane. The divider is visual only, not a reply row.
   if conversation then
     local previous = seen.open(agent_title, conversation, seen.reply_key(replies[#replies]), state_home)
     if previous then
       for row = 3, #lines do
         if seen.reply_key(by_row[row]) == previous then
-          lines[row] = lines[row]:sub(1, 8) .. "[Last opened] " .. lines[row]:sub(9)
+          local namespace = vim.api.nvim_create_namespace("rex-annotate-picker-last-opened")
+          vim.api.nvim_buf_set_extmark(buf, namespace, row - 1, 0, {
+            virt_lines = { { { "── Last opened ──", "Comment" } } },
+            virt_lines_above = true,
+          })
           break
         end
       end
     end
   end
-  local buf = scratch(lines)
   local win = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(win, buf)
   vim.wo[win].wrap = false
@@ -599,9 +638,17 @@ function M.pick_replies(replies, target, services, agent_title, conversation, st
   local function can_quit()
     return not drafts.dirty() or vim.fn.confirm("Discard unfinished annotations?", "&Keep editing\n&Discard", 1) == 2
   end
-  vim.api.nvim_create_autocmd("QuitPre", { buffer = buf, callback = function()
-    if not can_quit() then error("Annotations kept open", 0) end
-  end })
+  local function guard_quit(buffer)
+    vim.api.nvim_create_autocmd("QuitPre", { buffer = buffer, callback = function()
+      if not can_quit() then error("Annotations kept open", 0) end
+    end })
+  end
+  guard_quit(buf)
+  local function quit()
+    if not can_quit() then return end
+    drafts.mark_clean() -- Do not prompt again during the native quit event.
+    if services.quit then services.quit() else vim.cmd("qa!") end
+  end
   vim.api.nvim_win_set_cursor(win, { 3, 0 })
   local picker = { picker = buf, replies = replies }
   local function open_reply(row)
@@ -638,11 +685,34 @@ function M.pick_replies(replies, target, services, agent_title, conversation, st
   mapping(buf, "n", "<CR>", guarded(function()
     return open_reply(vim.api.nvim_win_get_cursor(win)[1])
   end))
-  mapping(buf, "n", "q", function()
-    if not can_quit() then return end
-    drafts.mark_clean() -- Do not prompt again during the native quit event.
-    if services.quit then services.quit() else vim.cmd("qa!") end
-  end)
+  mapping(buf, "n", "m", guarded(function()
+    local row = vim.api.nvim_win_get_cursor(win)[1]
+    assert(by_row[row], "Select a reply to manage its annotations")
+    manage_notes(drafts.for_reply(row - 2), function(note)
+      open_reply(row).edit_note(note)
+    end, function()
+      refresh_note_mark(row)
+      picker_status()
+    end)
+  end))
+  mapping(buf, "n", "p", guarded(function()
+    local saved_view = vim.fn.winsaveview()
+    local winbar, wrap = vim.wo[win].winbar, vim.wo[win].wrap
+    local payload = drafts.format()
+    local preview = preview_buffer(win, payload, function()
+      vim.api.nvim_win_set_buf(win, buf)
+      vim.wo[win].winbar, vim.wo[win].wrap = winbar, wrap
+      vim.fn.winrestview(saved_view)
+    end, guarded(function(kind)
+      if not deliver_payload(services, kind, payload) then return end
+      drafts.mark_clean()
+      if kind == "copy" then notify("Copied annotations") else quit() end
+    end))
+    vim.wo[win].winbar = " Feedback preview %<· Esc back · y copy · Shift+Enter insert · Ctrl+Enter send"
+    vim.wo[win].wrap = true
+    guard_quit(preview)
+  end))
+  mapping(buf, "n", "q", quit)
   picker.select = open_reply
   return picker
 end

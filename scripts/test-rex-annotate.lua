@@ -170,8 +170,12 @@ test("last-opened reply is per conversation and frozen until the picker is reope
     return view.pick_replies(replies, { block_id = "b" }, {}, agent, conversation, state)
   end
   local function markers(picker)
-    return vim.tbl_filter(function(line) return line:find("[Last opened]", 1, true) end,
-      vim.api.nvim_buf_get_lines(picker.picker, 0, -1, false))
+    local namespace = vim.api.nvim_create_namespace("rex-annotate-picker-last-opened")
+    return vim.tbl_map(function(mark)
+      eq(true, mark[4].virt_lines_above)
+      eq("── Last opened ──", mark[4].virt_lines[1][1][1])
+      return vim.api.nvim_buf_get_lines(picker.picker, mark[2], mark[2] + 1, false)[1]
+    end, vim.api.nvim_buf_get_extmarks(picker.picker, namespace, 0, -1, { details = true }))
   end
   local function close(picker) vim.api.nvim_buf_delete(picker.picker, { force = true }) end
   local ok, err = pcall(function()
@@ -179,14 +183,15 @@ test("last-opened reply is per conversation and frozen until the picker is reope
     eq({}, markers(picker))
     close(picker)
     picker = open("Pi", "thread", { "A", "B", "C", "D" })
-    eq({ "     ?  [Last opened] Reply B" }, markers(picker))
+    eq({ "     ?  Reply B" }, markers(picker))
+    eq(6, vim.api.nvim_buf_line_count(picker.picker))
     for _, row in ipairs({ 3, 6, 5 }) do
       assert(picker.select(row):close(false, true))
-      eq({ "     ?  [Last opened] Reply B" }, markers(picker))
+      eq({ "     ?  Reply B" }, markers(picker))
     end
     close(picker)
     picker = open("Pi", "thread", { "A", "B", "C", "D" })
-    eq({ "     ?  [Last opened] Reply D" }, markers(picker))
+    eq({ "     ?  Reply D" }, markers(picker))
     close(picker)
     for _, scope in ipairs({ {"Pi", "other"}, {"Codex", "thread"}, {"Pi", "thread"} }) do
       picker = open(scope[1], scope[2], { "A", "B" })
@@ -219,12 +224,30 @@ test("notes across replies survive Back and preview and insert as one draft", fu
   local extra = older.draft:add("older", "extra", range)
   assert(older:close(false, true))
   eq({ { 3, "[2 notes] " } }, note_marks())
-  older = picker.select(4)
-  older.draft:remove(extra)
-  assert(older:close(false, true))
+  local select = vim.ui.select
+  vim.api.nvim_win_set_cursor(0, { 4, 0 })
+  vim.ui.select = function(items, options, callback)
+    if options.prompt == "Annotations" then
+      eq(extra, items[2].id)
+      callback(items[2])
+    else
+      callback("Remove")
+    end
+  end
+  vim.fn.feedkeys("m", "xt")
+  vim.ui.select = select
+  eq(picker.picker, vim.api.nvim_get_current_buf())
   eq({ { 3, "[1 note] " } }, note_marks())
   assert(vim.wo[0].statusline:find("1 note ·", 1, true))
-  older = picker.select(4)
+  vim.ui.select = function(items, options, callback)
+    if options.prompt == "Annotations" then callback(items[1]) else callback("Edit") end
+  end
+  vim.fn.feedkeys("m", "xt")
+  vim.ui.select = select
+  older = picker.editor
+  eq({ "second" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
+  vim.fn.feedkeys(vim.keycode("<CR>"), "xt")
+  eq(older.source, vim.api.nvim_get_current_buf())
   older.draft:remove(id)
   assert(older:close(false, true))
   eq({}, note_marks())
@@ -244,15 +267,20 @@ test("notes across replies survive Back and preview and insert as one draft", fu
   vim.fn.confirm = original_confirm
   assert(not ok and tostring(err):find("Annotations kept open", 1, true))
 
-  older = picker.select(4)
-  eq(1, #older.draft.notes)
   local payload = "# Terminal annotations\n\n## Reply 1\n\n> newest\n\nFeedback: first"
     .. "\n\n## Reply 2\n\n> older\n\nFeedback: second"
+  local cursor = vim.api.nvim_win_get_cursor(0)
   vim.fn.feedkeys("p", "xt")
   eq(payload, table.concat(vim.api.nvim_buf_get_lines(0, 0, -1, false), "\n"))
+  vim.fn.feedkeys(vim.keycode("<Esc>"), "xt")
+  eq(picker.picker, vim.api.nvim_get_current_buf())
+  eq(cursor, vim.api.nvim_win_get_cursor(0))
+  vim.fn.feedkeys("p", "xt")
+  local preview = vim.api.nvim_get_current_buf()
   vim.fn.feedkeys(vim.keycode("<S-CR>"), "xt")
   eq(payload, inserted)
   eq(1, quits)
+  vim.api.nvim_buf_delete(preview, { force = true })
   vim.api.nvim_buf_delete(picker.picker, { force = true })
 end)
 
@@ -651,6 +679,31 @@ test("normal Ctrl+Y and Ctrl+N save current-line notes without opening the edito
   eq("No", session.draft.notes[2].comment)
   eq({ 2, 0, 2, 4, mode = "V" }, session.draft.notes[2].range)
   eq(0, deliveries)
+  session:close(true)
+end)
+
+test("x confirms removal of the newest note on the current logical line", function()
+  local view = dofile(root .. "annotate_view.lua")
+  local quits = 0
+  local session = view.open("alpha\nbeta\ngamma", { block_id = "b" }, { quit = function() quits = quits + 1 end })
+  session.draft:add("alpha\nbeta\n", "older", { 1, 0, 3, 0, mode = "V" })
+  session.draft:add("be", "newest", { 2, 0, 2, 2, mode = "v" })
+  vim.api.nvim_win_set_cursor(0, { 2, 3 })
+  for _, key in ipairs({ "q", vim.keycode("<Esc>") }) do
+    vim.fn.feedkeys("x" .. key, "xt")
+    eq(2, #session.draft.notes)
+    eq(0, quits)
+  end
+  vim.fn.feedkeys("xx", "xt")
+  eq(1, #session.draft.notes)
+  eq("older", session.draft.notes[1].comment)
+  vim.api.nvim_win_set_cursor(0, { 3, 0 })
+  vim.fn.feedkeys("x", "xt")
+  eq(1, #session.draft.notes) -- Exclusive linewise endpoint does not count.
+  vim.api.nvim_win_set_cursor(0, { 2, 0 })
+  vim.fn.feedkeys("xx", "xt")
+  eq(0, #session.draft.notes)
+  eq(0, quits)
   session:close(true)
 end)
 
