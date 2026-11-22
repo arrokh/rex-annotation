@@ -14,8 +14,8 @@
 3. Use `j`/`k` or `/` search, then **Enter** to open a reply. Newest replies are
    first. Rows show a compact relative time and preview, not internal IDs. Press
    **Esc** in a reply to return to the list without losing saved notes.
-   **[Last opened]** marks the reply
-   that was newest the previous time you opened this conversation’s picker.
+   The **Last opened** divider sits just above the reply that was newest the
+   previous time you opened this conversation’s picker. It is not selectable.
    The marker stays put when you go back from a reply. It only updates when
    you open a new annotation pane, and is hidden if that reply is unavailable.
 4. Select a quote with `v` or `V`, then **Enter** to write a comment. Without a
@@ -60,6 +60,8 @@ Closing the pane warns about feedback that has not been copied or delivered.
 | Where | Key | Action |
 | --- | --- | --- |
 | Reply picker | `j` / `k`, `/`, Enter | Move, search, and open a reply |
+| Reply picker | `p` | Preview the combined draft; `q` / Esc returns to the picker |
+| Reply picker | `m` | Edit or remove a saved note on the highlighted reply |
 | Reply view | `hjkl`, `w` / `b`, `/` | Native Vim movement and search |
 | Reply view | `Ctrl+W` | Toggle line wrapping on/off |
 | Reply view | `Esc` | Return to the reply list and keep saved notes |
@@ -73,6 +75,7 @@ Closing the pane warns about feedback that has not been copied or delivered.
 | Reply view | `n` / `N` | Jump to the next / previous annotation; wraps at the ends |
 | Reply view | `\n` / `\N` | Repeat the last Vim search in the same / opposite direction |
 | Reply view | `Ctrl+E` | Edit the annotation you jumped to or the one under the cursor |
+| Reply view (Normal mode) | `x`, then `x` | Remove the newest annotation on the current logical line. Press `q` or Esc to cancel |
 | Reply view | `m` | Pick a saved note to edit or remove |
 | Reply view | `p` | Preview the exact Markdown; `q` / Esc returns |
 | Reply view | `y` | Copy the Markdown to the macOS clipboard; stay open |

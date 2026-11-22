@@ -2,6 +2,12 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.5
+
+- Show **Last opened** on its own divider above the previously newest reply.
+- Preview the combined draft with `p` and manage notes on the highlighted reply with `m` directly from the reply picker.
+- Press `x` in reply detail to remove the newest note on the current line. Confirm with `x`, or cancel with `q` or `Esc`.
+
 ## 0.2.4
 
 - Mark the previously newest reply as **Last opened** for each conversation. The marker stays fixed while navigating the open pane.
