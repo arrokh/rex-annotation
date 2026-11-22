@@ -99,6 +99,20 @@ local function open_annotation(ctx)
       end
       error(tostring(release_error) .. (cleanup_error and ("; cleanup failed: " .. cleanup_error) or ""), 0)
     end
+    if target.separate_tab and rex.client and rex.client.queue then
+      -- Ask the initiating app to switch tabs, not just the server to track focus.
+      -- If the client cannot switch, keep the tab open for manual selection.
+      pcall(function()
+        local view = call("session.view", { session_id = ctx.session_id })
+        if view.active_window_id ~= placement.window_id then return end
+        for index, window in ipairs(view.windows or {}) do
+          if window.window_id == placement.window_id then
+            rex.client.queue("client.tab.goto", { index = index })
+            break
+          end
+        end
+      end)
+    end
     return placement
   end)
   pending[key] = nil

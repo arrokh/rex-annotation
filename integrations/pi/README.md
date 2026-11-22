@@ -46,7 +46,9 @@ only a new annotation pane, not a Pi reload.
 - `snapshot` and `status`: bounded compatibility/read-only operations.
 
 Inserts and sends require the original Rex session/block/PID, the same Pi
-conversation, an idle agent, and no queued messages. Errors preserve the
+conversation. Insert requires an idle editor and no queued messages; Send
+uses Pi’s follow-up queue when busy without interrupting the current turn.
+Errors preserve the
 annotation pane and draft. Never retry a timeout without checking the source:
 the operation might already have happened.
 

@@ -103,8 +103,9 @@ to the screen you opened the note list from.
 **Shift+Enter inserts without submitting. Ctrl+Enter sends immediately.**
 There is no typed `SEND` confirmation.
 
-- **Pi:** insertion uses its editor API, including with Pi-vim. The existing
-  draft is preserved.
+- **Pi:** Send uses Pi’s follow-up queue while Pi is working and sends right
+  away when idle. Insert uses Pi’s editor API, including with Pi-vim, and
+  preserves the existing draft. Insert still requires an idle editor.
 - **Codex, Claude, and CUX:** insertion uses guarded bracketed paste. Keep the
   original agent at an editable prompt, not a dialog. `Shift+Enter` asks you to
   confirm that prompt is ready before it pastes.

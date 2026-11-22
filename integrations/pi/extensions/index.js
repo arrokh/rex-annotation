@@ -11,7 +11,7 @@ export default function rexAnnotate(pi) {
     try {
       starting = startBridge(() => context, { pid: process.pid,
         session: process.env.REX_SESSION, block: process.env.REX_BLOCK,
-        sendMessage: text => pi.sendUserMessage(text) });
+        sendMessage: (text, options) => pi.sendUserMessage(text, options) });
       bridge = await starting;
     } catch (error) { ctx.ui.notify(`Rex annotation bridge unavailable: ${error.message}`, 'warning'); }
   });
