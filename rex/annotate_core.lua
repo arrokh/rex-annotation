@@ -121,13 +121,13 @@ local function source_pane(view, target)
   end
 end
 
-function M.overlay_bounds(view, target)
+function M.overlay_bounds(view, target, full_width)
   local _, rect = source_pane(view, target)
   assert(rect and #rect == 4, "Source pane geometry is unavailable; focus the target and retry")
   for _, value in ipairs(rect) do assert(type(value) == "number", "Invalid source pane geometry") end
   assert(rect[3] > 0 and rect[4] > 0, "Source pane has no visible area")
-  -- Start at half the Rex window width, regardless of the source split.
-  local width, height = 0.5, rect[4] * 0.9
+  -- Use the Rex window width, not the source split’s width.
+  local width, height = full_width and 1 or 0.5, rect[4] * 0.9
   return { (1 - width) / 2, (1 - height) / 2, width, height }
 end
 

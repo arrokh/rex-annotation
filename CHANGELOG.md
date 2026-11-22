@@ -2,6 +2,10 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.10
+
+- Open the annotation pane at full Rex window width on iPhone and iPad. The Mac default remains half width.
+
 ## 0.2.9
 
 - Allow Rex on iPhone and iPad to open annotations over Tailscale when the source pane runs on the same Mac as the Rex server. Clipboard copy is unavailable for these clients.

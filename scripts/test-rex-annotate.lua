@@ -785,6 +785,7 @@ test("launcher uses explicit source window, local client and an isolated Neovim 
   local ios_context = { session_id = "session:test", block_id = "block:source", client_id = "client:ipad" }
   client = { info = { platform = "ios" }, principal = { transport = "tailscale", kind = "tailscale" } }
   action.run(ios_context, {})
+  bounds_eq({ 0, 0.05, 1, 0.9 }, created.bounds)
   eq(false, encoded.clipboard)
   eq("client:ipad", encoded.client_id)
   eq("block:source", encoded.block_id)
