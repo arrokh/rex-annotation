@@ -64,17 +64,12 @@ local function deliver_payload(services, kind, payload)
   return true
 end
 
-local function manage_notes(draft, edit, removed)
-  if #draft.notes == 0 then notify("No annotations yet"); return end
-  vim.ui.select(draft.notes, { prompt = "Annotations", format_item = function(note)
-    return "[" .. note.id .. "] L" .. note.range[1] .. ":" .. (note.range[2] + 1) .. " " .. note.comment:gsub("\n", " ")
-  end }, function(note)
-    if not note then return end
-    vim.ui.select({ "Edit", "Remove" }, { prompt = "Annotation " .. note.id }, guarded(function(choice)
-      if choice == "Edit" then edit(note)
-      elseif choice == "Remove" then draft:remove(note.id); removed() end
-    end))
-  end)
+local function confirm_removal(note)
+  vim.cmd.redraw()
+  vim.api.nvim_echo({ { "Remove note [" .. note.id .. "]? x confirm · q/Esc cancel", "Question" } }, false, {})
+  local key = vim.fn.getcharstr()
+  vim.api.nvim_echo({}, false, {})
+  return key == "x"
 end
 
 local function preview_buffer(win, payload, back, attempt)
@@ -144,7 +139,7 @@ function M.open(snapshot, target, services, source_title, on_back, reply_drafts,
   local session = { source = source, draft = draft, namespace = ns }
   local group = vim.api.nvim_create_augroup("rex-annotate-" .. source, { clear = true })
   vim.api.nvim_create_autocmd("OptionSet", { group = group, pattern = "background", callback = set_annotation_colors })
-  local editor, editor_quote, preview
+  local editor, editor_quote, preview, manager
   local closed = false
   local function wrap_cells(text, width)
     local result, line = {}, ""
@@ -161,12 +156,17 @@ function M.open(snapshot, target, services, source_title, on_back, reply_drafts,
   local function refresh_header()
     if closed or not vim.api.nvim_win_is_valid(header_win) or not vim.api.nvim_win_is_valid(win) then return end
     local width = math.max(1, vim.api.nvim_win_get_width(header_win))
-    local help = wrap_cells(tostring(source_title or "SNAPSHOT"), width)
+    local help = wrap_cells(manager and "ANNOTATIONS · CURRENT REPLY" or tostring(source_title or "SNAPSHOT"), width)
     local line = ""
-    local actions = { "v/V select", "Enter note", "Ctrl+Y/N Yes/No", "n/N notes", "\\n/\\N search", "Ctrl+E edit", "x remove", "m manage", "p preview",
-      "y copy", "Shift+Enter insert", "Ctrl+Enter send", "Ctrl+W wrap" }
-    if on_back then actions[#actions + 1] = "Esc list" end
-    actions[#actions + 1] = "q close"
+    local actions
+    if manager then
+      actions = { "j/k move", "Enter edit", "x remove", "q/Esc back" }
+    else
+      actions = { "v/V select", "Enter note", "Ctrl+Y/N Yes/No", "n/N notes", "\\n/\\N search", "Ctrl+E edit", "x remove", "m manage", "p preview",
+        "y copy", "Shift+Enter insert", "Ctrl+Enter send", "Ctrl+W wrap" }
+      if on_back then actions[#actions + 1] = "Esc list" end
+      actions[#actions + 1] = "q close"
+    end
     for _, action in ipairs(actions) do
       local candidate = line == "" and action or (line .. " · " .. action)
       if vim.fn.strdisplaywidth(candidate) <= width then
@@ -254,7 +254,7 @@ function M.open(snapshot, target, services, source_title, on_back, reply_drafts,
         end
       end
     end
-    for _, buf in ipairs({ editor or false, editor_quote or false, preview or false, header, source }) do
+    for _, buf in ipairs({ editor or false, editor_quote or false, preview or false, manager or false, header, source }) do
       if buf and vim.api.nvim_buf_is_valid(buf) then vim.api.nvim_buf_delete(buf, { force = true }) end
     end
     if not back_to_list and services.quit then services.quit() end
@@ -444,8 +444,11 @@ function M.open(snapshot, target, services, source_title, on_back, reply_drafts,
     cursor = vim.api.nvim_win_get_cursor(win)
     jumped = { id = note.id, row = cursor[1], col = cursor[2] }
   end
-  local function edit_note(note)
-    comment(note.quote, note.comment, function(value) draft:edit(note.id, value) end)
+  local function edit_note(note, updated)
+    comment(note.quote, note.comment, function(value)
+      draft:edit(note.id, value)
+      if updated then updated() end
+    end)
   end
   local function edit_at_cursor()
     local cursor = vim.api.nvim_win_get_cursor(win)
@@ -465,11 +468,7 @@ function M.open(snapshot, target, services, source_title, on_back, reply_drafts,
       local range = note.range
       local last = range[3] - (range[4] == 0 and 1 or 0)
       if row >= range[1] and row <= last then
-        vim.cmd.redraw()
-        vim.api.nvim_echo({ { "Remove note [" .. note.id .. "]? x confirm · q/Esc cancel", "Question" } }, false, {})
-        local key = vim.fn.getcharstr()
-        vim.api.nvim_echo({}, false, {})
-        if key == "x" then
+        if confirm_removal(note) then
           draft:remove(note.id)
           refresh()
         end
@@ -491,8 +490,59 @@ function M.open(snapshot, target, services, source_title, on_back, reply_drafts,
   mapping(source, "n", "<CR>", guarded(comment_current_line))
   mapping(source, "n", "<C-y>", guarded(function() comment_current_line("Yes") end))
   mapping(source, "n", "<C-n>", guarded(function() comment_current_line("No") end))
-  session.edit_note = edit_note
-  mapping(source, "n", "m", function() manage_notes(draft, edit_note, refresh) end)
+  function session:manage(return_to_picker)
+    if #draft.notes == 0 then notify("No annotations yet"); return end
+    local view = vim.fn.winsaveview()
+    local wrap, number = vim.wo[win].wrap, vim.wo[win].number
+    local function rows()
+      local result = {}
+      for _, note in ipairs(draft.notes) do
+        result[#result + 1] = string.format("[%d] L%d:%d  %s", note.id, note.range[1], note.range[2] + 1,
+          note.comment:gsub("%s+", " "))
+      end
+      return #result > 0 and result or { "No annotations left. Press q or Esc to go back." }
+    end
+    local buf = scratch(rows())
+    manager = buf
+    vim.api.nvim_win_set_buf(win, buf)
+    vim.wo[win].number, vim.wo[win].wrap = false, false
+    refresh()
+    local function update()
+      local row = vim.api.nvim_win_get_cursor(win)[1]
+      vim.bo[buf].modifiable = true
+      local lines = rows()
+      vim.api.nvim_buf_set_lines(buf, 0, -1, false, lines)
+      vim.bo[buf].modifiable = false
+      vim.api.nvim_win_set_cursor(win, { math.min(row, #lines), 0 })
+    end
+    local function back()
+      if return_to_picker then
+        session:close(false, true)
+      else
+        manager = nil
+        vim.api.nvim_win_set_buf(win, source)
+        vim.api.nvim_buf_delete(buf, { force = true })
+        vim.wo[win].number, vim.wo[win].wrap = number, wrap
+        refresh()
+        vim.fn.winrestview(view)
+      end
+    end
+    mapping(buf, "n", "<CR>", guarded(function()
+      local note = draft.notes[vim.api.nvim_win_get_cursor(win)[1]]
+      if note then edit_note(note, update) end
+    end))
+    mapping(buf, "n", "x", guarded(function()
+      local note = draft.notes[vim.api.nvim_win_get_cursor(win)[1]]
+      if note and confirm_removal(note) then
+        draft:remove(note.id)
+        update()
+        refresh()
+      end
+    end))
+    mapping(buf, "n", "q", guarded(back))
+    mapping(buf, "n", "<Esc>", guarded(back))
+  end
+  mapping(source, "n", "m", guarded(function() session:manage() end))
   local function preview_payload()
     preview = preview_buffer(win, session:payload(), function()
       vim.api.nvim_win_set_buf(win, source)
@@ -688,12 +738,8 @@ function M.pick_replies(replies, target, services, agent_title, conversation, st
   mapping(buf, "n", "m", guarded(function()
     local row = vim.api.nvim_win_get_cursor(win)[1]
     assert(by_row[row], "Select a reply to manage its annotations")
-    manage_notes(drafts.for_reply(row - 2), function(note)
-      open_reply(row).edit_note(note)
-    end, function()
-      refresh_note_mark(row)
-      picker_status()
-    end)
+    if drafts.count(row - 2) == 0 then notify("No annotations yet"); return end
+    open_reply(row):manage(true)
   end))
   mapping(buf, "n", "p", guarded(function()
     local saved_view = vim.fn.winsaveview()

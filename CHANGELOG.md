@@ -2,6 +2,10 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.6
+
+- Open a keyboard-navigable note list with `m`. Edit a selected note with Enter, or remove it with `x` and confirmation. Saving returns to the note list without closing the pane.
+
 ## 0.2.5
 
 - Show **Last opened** on its own divider above the previously newest reply.

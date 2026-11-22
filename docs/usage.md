@@ -52,8 +52,16 @@ different reply. Saved notes stay in the pane. The picker shows `[1 note]` or
 `[2 notes]` beside replies with saved notes. Preview, copy, insert, and Send
 use the combined draft. When there are notes on multiple replies, the draft
 groups them newest first; reply numbers refer to positions in the picker (the
-newest reply is 1). `m` edits or removes notes for the current reply only.
-Closing the pane warns about feedback that has not been copied or delivered.
+newest reply is 1). Closing the pane warns about feedback that has not been copied or delivered.
+
+## Manage notes
+
+Press `m` in a reply or on a highlighted reply in the picker to open its note
+list. Move with `j` / `k` and press **Enter** to edit. The original quote stays
+visible and cannot be edited. Save with **Enter** to return to the note list
+without losing your place. Press `x`, then `x` to remove the selected note;
+`q` or Esc cancels the confirmation. Outside confirmation, `q` or Esc returns
+to the screen you opened the note list from.
 
 ## Key reference
 
@@ -61,7 +69,7 @@ Closing the pane warns about feedback that has not been copied or delivered.
 | --- | --- | --- |
 | Reply picker | `j` / `k`, `/`, Enter | Move, search, and open a reply |
 | Reply picker | `p` | Preview the combined draft; `q` / Esc returns to the picker |
-| Reply picker | `m` | Edit or remove a saved note on the highlighted reply |
+| Reply picker | `m` | Open the note list for the highlighted reply |
 | Reply view | `hjkl`, `w` / `b`, `/` | Native Vim movement and search |
 | Reply view | `Ctrl+W` | Toggle line wrapping on/off |
 | Reply view | `Esc` | Return to the reply list and keep saved notes |
@@ -76,7 +84,8 @@ Closing the pane warns about feedback that has not been copied or delivered.
 | Reply view | `\n` / `\N` | Repeat the last Vim search in the same / opposite direction |
 | Reply view | `Ctrl+E` | Edit the annotation you jumped to or the one under the cursor |
 | Reply view (Normal mode) | `x`, then `x` | Remove the newest annotation on the current logical line. Press `q` or Esc to cancel |
-| Reply view | `m` | Pick a saved note to edit or remove |
+| Reply view | `m` | Open the note list for the current reply |
+| Note list | `j` / `k`, `Enter`, `x`, `q` / Esc | Move, edit, request removal, or go back |
 | Reply view | `p` | Preview the exact Markdown; `q` / Esc returns |
 | Reply view | `y` | Copy the Markdown to the macOS clipboard; stay open |
 | Reply view and preview | `Shift+Enter` | Insert into the original agent draft; do not submit |

@@ -224,32 +224,23 @@ test("notes across replies survive Back and preview and insert as one draft", fu
   local extra = older.draft:add("older", "extra", range)
   assert(older:close(false, true))
   eq({ { 3, "[2 notes] " } }, note_marks())
-  local select = vim.ui.select
   vim.api.nvim_win_set_cursor(0, { 4, 0 })
-  vim.ui.select = function(items, options, callback)
-    if options.prompt == "Annotations" then
-      eq(extra, items[2].id)
-      callback(items[2])
-    else
-      callback("Remove")
-    end
-  end
   vim.fn.feedkeys("m", "xt")
-  vim.ui.select = select
+  local manager = vim.api.nvim_get_current_buf()
+  eq({ "[" .. id .. "] L1:1  second", "[" .. extra .. "] L1:1  extra" },
+    vim.api.nvim_buf_get_lines(0, 0, -1, false))
+  vim.fn.feedkeys("jxxq", "xt")
   eq(picker.picker, vim.api.nvim_get_current_buf())
+  eq(false, vim.api.nvim_buf_is_valid(manager))
+  eq({ 4, 0 }, vim.api.nvim_win_get_cursor(0))
   eq({ { 3, "[1 note] " } }, note_marks())
   assert(vim.wo[0].statusline:find("1 note ·", 1, true))
-  vim.ui.select = function(items, options, callback)
-    if options.prompt == "Annotations" then callback(items[1]) else callback("Edit") end
-  end
-  vim.fn.feedkeys("m", "xt")
-  vim.ui.select = select
-  older = picker.editor
+  vim.fn.feedkeys("m" .. vim.keycode("<CR>"), "xt")
   eq({ "second" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
   vim.fn.feedkeys(vim.keycode("<CR>"), "xt")
-  eq(older.source, vim.api.nvim_get_current_buf())
-  older.draft:remove(id)
-  assert(older:close(false, true))
+  eq({ "[" .. id .. "] L1:1  second" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
+  vim.fn.feedkeys("xxq", "xt")
+  eq(picker.picker, vim.api.nvim_get_current_buf())
   eq({}, note_marks())
   older = picker.select(4)
   older.draft:add("older", "second", range)
@@ -857,16 +848,18 @@ test("notes can be edited and removed through the picker without altering quotes
   local session = view.open("alpha beta", { block_id = "b" }, {})
   vim.api.nvim_win_set_cursor(0, { 1, 0 })
   vim.fn.feedkeys("v4l" .. vim.keycode("<CR>") .. "first" .. vim.keycode("<CR>"), "xt")
-  local select = vim.ui.select
-  vim.ui.select = function(items, _, callback) callback(items[1]) end
-  vim.fn.feedkeys("m" .. vim.keycode("<Esc>") .. "gg0Cupdated" .. vim.keycode("<CR>"), "xt")
+  local cursor = vim.api.nvim_win_get_cursor(0)
+  vim.fn.feedkeys("m" .. vim.keycode("<CR><Esc>") .. "gg0Cupdated" .. vim.keycode("<CR>"), "xt")
   assert(session:payload():find("> alpha\n\nFeedback: updated", 1, true))
-  vim.ui.select = function(items, _, callback)
-    callback(type(items[1]) == "table" and items[1] or items[2])
-  end
-  vim.fn.feedkeys("m", "xt")
+  eq({ "[1] L1:1  updated" }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
+  vim.fn.feedkeys("xq", "xt")
+  eq(1, #session.draft.notes)
+  vim.fn.feedkeys("xx", "xt")
   eq("", session:payload())
-  vim.ui.select = select
+  eq({ "No annotations left. Press q or Esc to go back." }, vim.api.nvim_buf_get_lines(0, 0, -1, false))
+  vim.fn.feedkeys(vim.keycode("<Esc>"), "xt")
+  eq(session.source, vim.api.nvim_get_current_buf())
+  eq(cursor, vim.api.nvim_win_get_cursor(0))
   session:close(true)
 end)
 
