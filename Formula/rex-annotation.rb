@@ -2,9 +2,9 @@
 class RexAnnotation < Formula
   desc "Keyboard-first coding-agent reply annotations for Rex"
   homepage "https://github.com/arrokh/rex-annotation"
-  url "https://github.com/arrokh/rex-annotation/releases/download/v0.2.4/rex-annotation-0.2.4.tar.gz"
-  version "0.2.4"
-  sha256 "6a233b2e986ccc489fdffeaaaea73272143bacde5ee25d3648d0cdcff807ca84"
+  url "https://github.com/arrokh/rex-annotation/releases/download/v0.2.5/rex-annotation-0.2.5.tar.gz"
+  version "0.2.5"
+  sha256 "e9e6c855e26c4216f16b3c84b484340441e01376f68bfb8670f1883a1c21f712"
   license "MIT"
 
   depends_on :macos
