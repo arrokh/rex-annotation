@@ -103,3 +103,4 @@ rex.action{
   run = function(ctx) return open_annotation(ctx) end,
 }
 rex.bind("ctrl+s>o", "annotate_open")
+rex.bind("cmd+shift+o", "annotate_open")

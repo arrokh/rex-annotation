@@ -8,8 +8,8 @@
 ## Annotate a reply
 
 1. Start your agent normally in a Rex pane after [setup](setup.md).
-2. In the pane with the reply, press **Ctrl+S, then o** (two steps, not a
-   single chord). You can also use the Rex palette action **Annotate Agent
+2. In the pane with the reply, press **Command+Shift+O** or **Ctrl+S, then o**.
+   You can also use the Rex palette action **Annotate Agent
    Reply or Terminal Output**.
 3. Use `j`/`k` or `/` search, then **Enter** to open a reply. Newest replies are
    first. Rows show a compact relative time and preview, not internal IDs. Press

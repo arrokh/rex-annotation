@@ -766,6 +766,7 @@ test("launcher uses explicit source window, local client and an isolated Neovim 
   vim.env.XDG_CONFIG_HOME = vim.fn.getcwd()
   dofile(root .. "annotate.lua")
   eq("annotate_open", bindings["ctrl+s>o"])
+  eq("annotate_open", bindings["cmd+shift+o"])
   eq(nil, bindings["ctrl+s>shift+o"])
   eq(nil, bindings["ctrl+s>shift+a"])
   eq(nil, bindings["ctrl+s>a"])
