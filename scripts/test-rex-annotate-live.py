@@ -334,10 +334,9 @@ def run_overlay(clipboard=False, installed=False, leave_focus=False):
         opened_view = rex("session.view", {"session_id": session})
         opened_window = next(w for w in opened_view["windows"] if w["window_id"] == window)
         overlay = next(item for item in opened_window["layers"] if item["layer_id"] == layer["layer_id"])
-        source_rect = opened_window["layers"][0]["layout"]["split"]["before"]["rect"]
         bounds = overlay["bounds"]
-        if abs(bounds[2] - source_rect[2] / 2) > 1e-9 or abs(bounds[0] - (1 - bounds[2]) / 2) > 1e-9 or abs(bounds[1] - (1 - bounds[3]) / 2) > 1e-9:
-            regressions.append(f"Overlay {bounds} must be centered at half the target width {source_rect[2] / 2}")
+        if abs(bounds[2] - 0.5) > 1e-9 or abs(bounds[0] - (1 - bounds[2]) / 2) > 1e-9 or abs(bounds[1] - (1 - bounds[3]) / 2) > 1e-9:
+            regressions.append(f"Overlay {bounds} must be centered at half the Rex window width")
         wait_for(session, block, lambda s: "SNAPSHOT" in s and "alpha beta" in s)
         duplicate = invoke_annotation(root, session, source, installed)
         assert duplicate.returncode != 0 and "already has an annotation view" in duplicate.stderr
@@ -374,7 +373,7 @@ def run_overlay(clipboard=False, installed=False, leave_focus=False):
             regressions.append(f"Focus returned to {current['focused_block_id']}, expected {expected_focus} (target unless user moved)")
         assert "alpha beta" in terminal(session, source, "format")["content"]
         assert not regressions, "\n".join(regressions)
-        print("PASS split overlay: target width/alignment, annotation, preview, repeat guard, close, and correct focus", flush=True)
+        print("PASS split overlay: half-window width/alignment, annotation, preview, repeat guard, close, and correct focus", flush=True)
     finally:
         if session:
             rex("session.destroy", {"session_id": session})

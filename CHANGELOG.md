@@ -2,6 +2,11 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.8
+
+- Send the combined annotation draft directly from the reply picker with `Ctrl+Enter`.
+- Open the annotation pane at 50% of the Rex window width, regardless of how narrow the source pane is.
+
 ## 0.2.7
 
 - Manage notes across all replies with `m`, from the picker or any reply. `p` previews the combined feedback.

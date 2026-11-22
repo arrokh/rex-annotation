@@ -126,8 +126,8 @@ function M.overlay_bounds(view, target)
   assert(rect and #rect == 4, "Source pane geometry is unavailable; focus the target and retry")
   for _, value in ipairs(rect) do assert(type(value) == "number", "Invalid source pane geometry") end
   assert(rect[3] > 0 and rect[4] > 0, "Source pane has no visible area")
-  -- Start at half the source width; Rex owns resizing the resulting overlay.
-  local width, height = rect[3] * 0.5, rect[4] * 0.9
+  -- Start at half the Rex window width, regardless of the source split.
+  local width, height = 0.5, rect[4] * 0.9
   return { (1 - width) / 2, (1 - height) / 2, width, height }
 end
 

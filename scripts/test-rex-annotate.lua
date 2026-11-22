@@ -282,6 +282,36 @@ test("notes across replies survive Back and preview and insert as one draft", fu
   vim.api.nvim_buf_delete(picker.picker, { force = true })
 end)
 
+test("picker Ctrl+Enter sends all notes only when present, retaining the draft on failure", function()
+  local view = dofile(root .. "annotate_view.lua")
+  local sent, quits = {}, 0
+  local picker = view.pick_replies({ { text = "older" }, { text = "newest" } }, { block_id = "b" }, {
+    send = function(payload)
+      sent[#sent + 1] = payload
+      if #sent == 1 then error("Agent not ready") end
+    end,
+    quit = function() quits = quits + 1 end,
+  })
+  local send = vim.keycode("<C-CR>")
+  vim.fn.feedkeys(send, "xt")
+  eq(0, #sent)
+  for row, quote in pairs({ [3] = "newest", [4] = "older" }) do
+    local session = picker.select(row)
+    session.draft:add(quote, "note", { 1, 0, 1, #quote, mode = "v" })
+    assert(session:close(false, true))
+  end
+  vim.api.nvim_win_set_cursor(0, { 3, 0 })
+  vim.fn.feedkeys(send, "xt")
+  eq(0, quits)
+  eq(picker.picker, vim.api.nvim_get_current_buf())
+  assert(sent[1]:find("> newest", 1, true) and sent[1]:find("> older", 1, true))
+  vim.fn.feedkeys(send, "xt")
+  eq(2, #sent)
+  eq(sent[1], sent[2])
+  eq(1, quits)
+  vim.api.nvim_buf_delete(picker.picker, { force = true })
+end)
+
 test("reply picker supports another agent title and human-friendly future timestamps", function()
   local view = dofile(root .. "annotate_view.lua")
   local future = os.date("!%Y-%m-%dT%H:%M:%SZ", os.time() + 125)
@@ -740,7 +770,7 @@ test("launcher uses explicit source window, local client and an isolated Neovim 
   action.run({ session_id = "session:test", block_id = "block:source", client_id = "client:local" }, {})
   eq("window:source", created.window_id)
   eq("session:test", created.session_id)
-  bounds_eq({ 0.40625, 0.05, 0.1875, 0.9 }, created.bounds)
+  bounds_eq({ 0.25, 0.05, 0.5, 0.9 }, created.bounds)
   local options = created.layout.block.options
   eq("none", options.shell)
   eq(false, options.login)
@@ -921,7 +951,7 @@ test("closing a comment window cannot strand the editor or silently lose edits",
   session:close(true)
 end)
 
-test("overlay is centered at half the width of nested, floating, or zoomed sources", function()
+test("overlay is centered at half the Rex window width regardless of the source", function()
   local target = { session_id = "s", window_id = "w", block_id = "target" }
   local window = { window_id = "w", layers = {
     { kind = "tiled", layout = { split = {
@@ -933,11 +963,11 @@ test("overlay is centered at half the width of nested, floating, or zoomed sourc
     } } },
   } }
   local bounds = core.overlay_bounds({ windows = { { window_id = "unrelated" }, window } }, target)
-  for i, expected in ipairs({ 0.35, 0.1625, 0.3, 0.675 }) do assert(math.abs(bounds[i] - expected) < 1e-10) end
+  for i, expected in ipairs({ 0.25, 0.1625, 0.5, 0.675 }) do assert(math.abs(bounds[i] - expected) < 1e-10) end
   window.layers = { { kind = "floating", bounds = { 0.2, 0.1, 0.45, 0.6 },
     layout = { block_id = "target", rect = { 0.2, 0.1, 0.45, 0.6 } } } }
   bounds = core.overlay_bounds({ windows = { window } }, target)
-  for i, expected in ipairs({ 0.3875, 0.23, 0.225, 0.54 }) do assert(math.abs(bounds[i] - expected) < 1e-10) end
+  for i, expected in ipairs({ 0.25, 0.23, 0.5, 0.54 }) do assert(math.abs(bounds[i] - expected) < 1e-10) end
   window.zoomed_block_id = "target"
   bounds_eq({ 0.25, 0.05, 0.5, 0.9 }, core.overlay_bounds({ windows = { window } }, target))
   eq(false, pcall(core.overlay_bounds, { windows = {} }, target))
