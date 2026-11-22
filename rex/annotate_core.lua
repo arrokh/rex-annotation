@@ -30,9 +30,9 @@ function M.draft(source)
     end
     error("Annotation no longer exists")
   end
-  function draft:format()
+  function draft:format(without_heading)
     if #self.notes == 0 then return "" end
-    local parts = { "# Terminal annotations" }
+    local parts = without_heading and {} or { "# Terminal annotations" }
     for _, note in ipairs(self.notes) do
       -- Linewise selection includes the following separator. Omit just that
       -- newline in the payload, not blank lines inside the quoted text.
@@ -51,6 +51,42 @@ function M.draft(source)
     return table.concat(parts, "\n\n")
   end
   return draft
+end
+
+function M.reply_drafts(block_id, reply_count)
+  local drafts = {}
+  return {
+    for_reply = function(index)
+      if not drafts[index] then drafts[index] = M.draft(block_id) end
+      return drafts[index]
+    end,
+    count = function(index)
+      if index then return drafts[index] and #drafts[index].notes or 0 end
+      local count = 0
+      for _, draft in pairs(drafts) do count = count + #draft.notes end
+      return count
+    end,
+    dirty = function()
+      for _, draft in pairs(drafts) do if draft.dirty then return true end end
+      return false
+    end,
+    mark_clean = function()
+      for _, draft in pairs(drafts) do draft.dirty = false end
+    end,
+    format = function()
+      local parts, only = { "# Terminal annotations" }, nil
+      for index = 1, reply_count do
+        local draft = drafts[index]
+        if draft and #draft.notes > 0 then
+          only = draft
+          parts[#parts + 1] = "## Reply " .. index .. "\n\n" .. draft:format(true)
+        end
+      end
+      if #parts == 1 then return "" end
+      if #parts == 2 then return only:format() end
+      return table.concat(parts, "\n\n")
+    end,
+  }
 end
 
 local function source_pane(view, target)

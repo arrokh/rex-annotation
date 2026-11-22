@@ -1,6 +1,7 @@
 -- A private Neovim view: reuse Vim motions/visual/search; only annotation glue lives here.
 local directory = debug.getinfo(1, "S").source:sub(2):match("^(.*[/\\])")
 local core = dofile(directory .. "annotate_core.lua")
+local seen = dofile(directory .. "annotate_seen.lua")
 local M = {}
 
 local annotation_palette = {
@@ -45,7 +46,7 @@ local function guarded(fn)
   end
 end
 
-function M.open(snapshot, target, services, source_title, on_back)
+function M.open(snapshot, target, services, source_title, on_back, reply_drafts, reply_index)
   vim.o.modeline = false
   vim.o.shada = ""
   vim.o.backup = false
@@ -88,7 +89,11 @@ function M.open(snapshot, target, services, source_title, on_back)
     vim.wo[win].concealcursor = "n"
   end
   local ns = vim.api.nvim_create_namespace("rex-annotate")
-  local draft = core.draft(target.block_id)
+  local draft = reply_drafts and reply_drafts.for_reply(reply_index) or core.draft(target.block_id)
+  local function dirty()
+    if reply_drafts then return reply_drafts.dirty() end
+    return draft.dirty
+  end
   local session = { source = source, draft = draft, namespace = ns }
   local group = vim.api.nvim_create_augroup("rex-annotate-" .. source, { clear = true })
   vim.api.nvim_create_autocmd("OptionSet", { group = group, pattern = "background", callback = set_annotation_colors })
@@ -111,7 +116,7 @@ function M.open(snapshot, target, services, source_title, on_back)
     local width = math.max(1, vim.api.nvim_win_get_width(header_win))
     local help = wrap_cells(tostring(source_title or "SNAPSHOT"), width)
     local line = ""
-    local actions = { "v/V select", "Enter note", "n/N notes", "\\n/\\N search", "Ctrl+E edit", "m manage", "p preview",
+    local actions = { "v/V select", "Enter note", "Ctrl+Y/N Yes/No", "n/N notes", "\\n/\\N search", "Ctrl+E edit", "m manage", "p preview",
       "y copy", "Shift+Enter insert", "Ctrl+Enter send", "Ctrl+W wrap" }
     if on_back then actions[#actions + 1] = "Esc list" end
     actions[#actions + 1] = "q close"
@@ -140,7 +145,9 @@ function M.open(snapshot, target, services, source_title, on_back)
   local function refresh_status()
     if not vim.api.nvim_win_is_valid(win) then return end
     local wrap_state = vim.wo[win].wrap and "wrap" or "nowrap"
-    vim.wo[win].statusline = " Rex Annotate · " .. #draft.notes .. " notes · "
+    local notes = reply_drafts and (#draft.notes .. " here / " .. reply_drafts.count() .. " total")
+      or (#draft.notes .. " notes")
+    vim.wo[win].statusline = " Rex Annotate · " .. notes .. " · "
       .. (delivery_error and statusline_text(delivery_error)
         or statusline_text(target.block_id) .. " · " .. wrap_state) .. " %=%l:%c "
   end
@@ -170,16 +177,22 @@ function M.open(snapshot, target, services, source_title, on_back)
   local function discard(message)
     return vim.fn.confirm(message, "&Keep editing\n&Discard", 1) == 2
   end
-  function session:payload() return draft:format() end
+  function session:payload()
+    if reply_drafts then return reply_drafts.format() end
+    return draft:format()
+  end
   function session:close(force, back_to_list)
     if closed then return true end
     if back_to_list and not on_back then return false end
-    if not force and (draft.dirty or editor) and not discard("Discard unfinished annotations?") then return false end
+    if not force and (editor or (not back_to_list and dirty()))
+        and not discard("Discard unfinished annotations?") then return false end
     if back_to_list and not on_back() then
       notify("Reply list is no longer available")
       return false
     end
     closed = true
+    -- A confirmed close or successful delivery may reveal the picker before quit.
+    if reply_drafts and not back_to_list then reply_drafts.mark_clean() end
     vim.api.nvim_del_augroup_by_id(group)
     if not back_to_list and vim.api.nvim_win_is_valid(win) and vim.api.nvim_buf_is_valid(source) then
       vim.api.nvim_win_set_buf(win, source)
@@ -201,12 +214,12 @@ function M.open(snapshot, target, services, source_title, on_back)
     return true
   end
   local function deliver(kind)
-    local payload = draft:format()
+    local payload = session:payload()
     assert(payload ~= "", "Add an annotation first")
     if kind == "copy" then
       assert(services.copy, "Clipboard is unavailable")
       services.copy(payload)
-      draft.dirty = false
+      if reply_drafts then reply_drafts.mark_clean() else draft.dirty = false end
       notify("Copied annotations")
       return
     elseif kind == "send" then
@@ -340,7 +353,7 @@ function M.open(snapshot, target, services, source_title, on_back)
     comment(quote, "", function(value) draft:add(quote, value, range) end,
       function() vim.cmd.normal({ args = { "gv" }, bang = true }) end)
   end
-  local function comment_current_line()
+  local function comment_current_line(quick_note)
     local row = vim.api.nvim_win_get_cursor(win)[1]
     local quote = lines[row]
     local range_end_row, range_end_byte = row, #quote
@@ -348,9 +361,15 @@ function M.open(snapshot, target, services, source_title, on_back)
       quote = quote .. "\n"
       range_end_row, range_end_byte = row + 1, 0
     end
-    comment(quote, "", function(value)
+    local function save(value)
       draft:add(quote, value, { row, 0, range_end_row, range_end_byte, mode = "V" })
-    end)
+    end
+    if quick_note then
+      save(quick_note)
+      refresh()
+    else
+      comment(quote, "", save)
+    end
   end
   local jumped
   local function before(row, col, other_row, other_col)
@@ -414,6 +433,8 @@ function M.open(snapshot, target, services, source_title, on_back)
   mapping(source, "n", "<C-e>", guarded(edit_at_cursor))
   mapping(source, "x", "<CR>", guarded(comment_selection))
   mapping(source, "n", "<CR>", guarded(comment_current_line))
+  mapping(source, "n", "<C-y>", guarded(function() comment_current_line("Yes") end))
+  mapping(source, "n", "<C-n>", guarded(function() comment_current_line("No") end))
   mapping(source, "n", "m", function()
     if #draft.notes == 0 then notify("No annotations yet"); return end
     vim.ui.select(draft.notes, { prompt = "Annotations", format_item = function(note)
@@ -427,8 +448,9 @@ function M.open(snapshot, target, services, source_title, on_back)
     end)
   end)
   local function preview_payload()
-    assert(#draft.notes > 0, "Add an annotation first")
-    preview = scratch(vim.split(draft:format(), "\n", { plain = true }))
+    local payload = session:payload()
+    assert(payload ~= "", "Add an annotation first")
+    preview = scratch(vim.split(payload, "\n", { plain = true }))
     local buf = preview
     vim.api.nvim_win_set_buf(win, buf)
     local function back()
@@ -455,7 +477,7 @@ function M.open(snapshot, target, services, source_title, on_back)
   end
   mapping(source, "n", "q", function() session:close() end)
   vim.api.nvim_create_autocmd("QuitPre", { group = group, callback = function()
-    if draft.dirty or editor then
+    if dirty() or editor then
       if not discard("Discard unfinished annotations?") then error("Annotations kept open", 0) end
       if editor and vim.api.nvim_buf_is_valid(editor) then vim.bo[editor].modified = false end
     end
@@ -511,7 +533,7 @@ local function relative_time(timestamp)
   return future and ("+" .. label) or label
 end
 
-function M.pick_replies(replies, target, services, agent_title)
+function M.pick_replies(replies, target, services, agent_title, conversation, state_home)
   agent_title = agent_title or "Pi"
   assert(type(agent_title) == "string" and agent_title:match("%S") and #agent_title <= 80,
     "Invalid assistant title")
@@ -534,6 +556,18 @@ function M.pick_replies(replies, target, services, agent_title)
     lines[#lines + 1] = string.format("%6s  %s", relative_time(reply.timestamp), excerpt)
     by_row[#lines] = reply
   end
+  -- Take one snapshot per pane. Returning from a reply reuses this buffer.
+  if conversation then
+    local previous = seen.open(agent_title, conversation, seen.reply_key(replies[#replies]), state_home)
+    if previous then
+      for row = 3, #lines do
+        if seen.reply_key(by_row[row]) == previous then
+          lines[row] = lines[row]:sub(1, 8) .. "[Last opened] " .. lines[row]:sub(9)
+          break
+        end
+      end
+    end
+  end
   local buf = scratch(lines)
   local win = vim.api.nvim_get_current_win()
   vim.api.nvim_win_set_buf(win, buf)
@@ -541,7 +575,33 @@ function M.pick_replies(replies, target, services, agent_title)
   vim.wo[win].number = false
   vim.wo[win].cursorline = true
   vim.wo[win].winbar = statusline_text(heading) .. " %<· newest first · Enter opens reply"
-  vim.wo[win].statusline = " Rex Annotate · " .. statusline_text(agent_title) .. " active branch · %l/%L "
+  local drafts = core.reply_drafts(target.block_id, #replies)
+  local note_marks = vim.api.nvim_create_namespace("rex-annotate-picker-notes")
+  local function note_count(count) return count .. (count == 1 and " note" or " notes") end
+  local function picker_status()
+    vim.wo[win].statusline = " Rex Annotate · " .. statusline_text(agent_title)
+      .. " active branch · " .. note_count(drafts.count()) .. " · %l/%L "
+  end
+  local function refresh_note_mark(row)
+    local index = row - 2
+    local count = drafts.count(index)
+    if count == 0 then
+      vim.api.nvim_buf_del_extmark(buf, note_marks, index)
+    else
+      -- Put the count before the excerpt so it remains visible in narrow panes.
+      vim.api.nvim_buf_set_extmark(buf, note_marks, row - 1, 8, {
+        id = index, virt_text = { { "[" .. note_count(count) .. "] ", "Special" } },
+        virt_text_pos = "inline",
+      })
+    end
+  end
+  picker_status()
+  local function can_quit()
+    return not drafts.dirty() or vim.fn.confirm("Discard unfinished annotations?", "&Keep editing\n&Discard", 1) == 2
+  end
+  vim.api.nvim_create_autocmd("QuitPre", { buffer = buf, callback = function()
+    if not can_quit() then error("Annotations kept open", 0) end
+  end })
   vim.api.nvim_win_set_cursor(win, { 3, 0 })
   local picker = { picker = buf, replies = replies }
   local function open_reply(row)
@@ -555,7 +615,6 @@ function M.pick_replies(replies, target, services, agent_title)
       conceallevel = vim.wo[win].conceallevel,
       concealcursor = vim.wo[win].concealcursor,
       winbar = vim.wo[win].winbar,
-      statusline = vim.wo[win].statusline,
     }
     local function on_back()
       if not vim.api.nvim_win_is_valid(win) or not vim.api.nvim_buf_is_valid(buf) then return false end
@@ -566,19 +625,22 @@ function M.pick_replies(replies, target, services, agent_title)
       vim.wo[win].conceallevel = picker_options.conceallevel
       vim.wo[win].concealcursor = picker_options.concealcursor
       vim.wo[win].winbar = picker_options.winbar
-      vim.wo[win].statusline = picker_options.statusline
+      refresh_note_mark(row)
+      picker_status()
       vim.api.nvim_win_set_cursor(win, selected_cursor)
       vim.api.nvim_set_current_win(win)
       return true
     end
     local source_title = agent_title == "Pi" and "PI REPLY" or agent_title .. " REPLY"
-    picker.editor = M.open(reply.text, target, services, source_title, on_back)
+    picker.editor = M.open(reply.text, target, services, source_title, on_back, drafts, row - 2)
     return picker.editor
   end
   mapping(buf, "n", "<CR>", guarded(function()
     return open_reply(vim.api.nvim_win_get_cursor(win)[1])
   end))
   mapping(buf, "n", "q", function()
+    if not can_quit() then return end
+    drafts.mark_clean() -- Do not prompt again during the native quit event.
     if services.quit then services.quit() else vim.cmd("qa!") end
   end)
   picker.select = open_reply
@@ -653,8 +715,11 @@ function M.start(target)
       quit = function() vim.cmd("qa!") end,
     }
     local response = pi_response or native_response
-    if response then M.pick_replies(response.replies, target, services, original.agent)
-    else M.open(snapshot, target, services) end
+    if response then
+      M.pick_replies(response.replies, target, services, original.agent, response.sessionId)
+    else
+      M.open(snapshot, target, services)
+    end
   end)
   if not ok then
     local error_lines = { "Rex Annotate could not open:" }
