@@ -2,6 +2,10 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.9
+
+- Allow Rex on iPhone and iPad to open annotations over Tailscale when the source pane runs on the same Mac as the Rex server. Clipboard copy is unavailable for these clients.
+
 ## 0.2.8
 
 - Send the combined annotation draft directly from the reply picker with `Ctrl+Enter`.

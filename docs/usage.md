@@ -133,8 +133,12 @@ Older discarded scrollback cannot be recovered.
 
 ## Requirements
 
-Use local macOS Rex with its CLI, Neovim with `vim.system` and `getregion`, and
-Python 3.9+. Pi also needs its normal Node.js runtime and the registered bridge.
+The Mac running the source pane needs Rex and its CLI, Neovim with `vim.system`
+and `getregion`, and Python 3.9+. Pi also needs its normal Node.js runtime and
+registered bridge. You can open Annotate from Rex on that Mac or from Rex on
+an iPhone or iPad connected to that Mac through Tailscale. Clipboard copy (`y`)
+is unavailable when opening from iPhone or iPad; Preview, Insert, and Send
+remain available for supported agents. A plain terminal snapshot cannot send.
 See [required tools](setup.md#required-tools) for installation details.
 
 ## Privacy and limits
