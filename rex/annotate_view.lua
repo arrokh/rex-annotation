@@ -49,7 +49,7 @@ end
 local function deliver_payload(services, kind, payload)
   assert(payload ~= "", "Add an annotation first")
   if kind == "copy" then
-    assert(services.copy, "Clipboard is unavailable")
+    assert(services.copy, "Clipboard copy is unavailable on this client")
     services.copy(payload)
   elseif kind == "send" then
     assert(services.send, "Explicit Send is unavailable; copy or insert instead")
@@ -820,7 +820,7 @@ function M.start(target)
       -- Pi uses its exact-session editor API; raw terminal paste still needs a readiness check.
       insert_requires_confirmation = pi_response == nil,
       copy = function(payload)
-        -- The launcher accepts local macOS clients only. Never use an unrelated host's clipboard.
+        assert(target.clipboard ~= false, "Clipboard copy is unavailable from Rex on iPhone or iPad")
         local result = vim.system({ "/usr/bin/pbcopy" }, { stdin = payload, timeout = 3000 }):wait()
         assert(result.code == 0, "Clipboard failed; draft kept")
       end,

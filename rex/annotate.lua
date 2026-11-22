@@ -11,7 +11,7 @@ end
 
 local function local_target(ctx)
   if not ctx.session_id or not ctx.block_id or not ctx.client_id then
-    error("Run Annotate from a local Rex terminal pane", 0)
+    error("Run Annotate from a Rex terminal pane", 0)
   end
   local source = call("session.describe_block", { session_id = ctx.session_id, block_id = ctx.block_id }).block
   local server = call("server.status", {})
@@ -19,13 +19,20 @@ local function local_target(ctx)
   if source.creator_name ~= "com.superlogical.terminal" or not source.window_id then
     error("Annotate needs a placed terminal pane", 0)
   end
-  if source.host_id ~= server.host_id or (client.principal or {}).transport ~= "unix"
-    or (client.info or {}).platform ~= "macos" then
-    error("Annotation v1 supports local macOS Rex clients only", 0)
+  if not server.host_id or source.host_id ~= server.host_id then
+    error("Annotation requires the source pane to run on the Rex server host", 0)
+  end
+  local platform = (client.info or {}).platform
+  local principal = client.principal or {}
+  local local_mac = platform == "macos" and principal.transport == "unix"
+  local ios = platform == "ios" and principal.transport == "tailscale" and principal.kind == "tailscale"
+    and (principal.tags == nil or next(principal.tags) == nil)
+  if not local_mac and not ios then
+    error("Annotation supports local macOS or iPhone/iPad clients connected through Tailscale", 0)
   end
   return {
     session_id = ctx.session_id, block_id = ctx.block_id,
-    window_id = source.window_id, client_id = ctx.client_id,
+    window_id = source.window_id, client_id = ctx.client_id, clipboard = local_mac,
   }, source
 end
 

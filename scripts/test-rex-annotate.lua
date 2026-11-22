@@ -737,20 +737,22 @@ end)
 
 test("launcher uses explicit source window, local client and an isolated Neovim argv", function()
   local action, created
+  local host = "host:local"
+  local client = { info = { platform = "macos" }, principal = { transport = "unix" } }
+  local encoded
   local bindings = {}
   _G.rex = {
     action = function(definition)
       if definition.name == "annotate_open" then action = definition end
     end,
     bind = function(chord, name) bindings[chord] = name end,
-    json = { encode = vim.json.encode },
+    json = { encode = function(target) encoded = target; return vim.json.encode(target) end },
     exec = function() return { ok = true } end,
     call = function(method, args)
       if method == "session.describe_block" then return { block = { block_id = "block:source",
-        creator_name = "com.superlogical.terminal", window_id = "window:source", host_id = "host:local" } } end
+        creator_name = "com.superlogical.terminal", window_id = "window:source", host_id = host } } end
       if method == "server.status" then return { host_id = "host:local" } end
-      if method == "client.inspect" then return { client = { info = { platform = "macos" },
-        principal = { transport = "unix" } } } end
+      if method == "client.inspect" then return { client = client } end
       if method == "session.list_blocks" then return { blocks = {} } end
       if method == "session.view" then return { windows = { { window_id = "window:source", layers = { {
         layout = { block_id = "block:source", rect = { 0.625, 0, 0.375, 1 } },
@@ -779,6 +781,28 @@ test("launcher uses explicit source window, local client and an isolated Neovim 
   local command_text = table.concat(options.command, "\n")
   assert(command_text:find(root, 1, true), "launcher must resolve helpers from the standalone rex/ directory")
   assert(command_text:find("block:source", 1, true))
+  eq(true, encoded.clipboard)
+  local ios_context = { session_id = "session:test", block_id = "block:source", client_id = "client:ipad" }
+  client = { info = { platform = "ios" }, principal = { transport = "tailscale", kind = "tailscale" } }
+  action.run(ios_context, {})
+  eq(false, encoded.clipboard)
+  eq("client:ipad", encoded.client_id)
+  eq("block:source", encoded.block_id)
+  local function refused(message)
+    created = nil
+    local ok, err = pcall(action.run, ios_context, {})
+    eq(false, ok)
+    eq(nil, created)
+    assert(tostring(err):find(message, 1, true))
+  end
+  host = "host:other"
+  refused("source pane to run on the Rex server host")
+  host = "host:local"
+  client.principal.tags = { "tag:worker" }
+  refused("connected through Tailscale")
+  client.principal = { transport = "tcp", kind = "anonymous" }
+  refused("connected through Tailscale")
+  client = { info = { platform = "macos" }, principal = { transport = "unix" } }
   local open = io.open
   io.open = function(path, ...)
     if path:find("annotate_view.lua", 1, true) then
