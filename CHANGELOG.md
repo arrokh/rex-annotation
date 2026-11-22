@@ -2,6 +2,10 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.11
+
+- Add `Command+Shift+O` as a direct shortcut to open annotations, including with a hardware keyboard on iPad. Keep `Ctrl+S`, then `o` available.
+
 ## 0.2.10
 
 - Open the annotation pane at full Rex window width on iPhone and iPad. The Mac default remains half width.
