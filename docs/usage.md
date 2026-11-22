@@ -33,7 +33,8 @@ Reply detail styles Markdown headings, lists, quotes, fenced code, simple inline
 On Mac, the pane opens centered at half the Rex window’s width, like one pane in an
 even side-by-side split, regardless of the source pane’s width. Resize or
 maximize it in Rex and the UI adjusts to the available space. On iPhone and
-iPad, the pane opens at the full Rex window width by default. The help header wraps
+iPad, annotations open in a dedicated **Annotations** tab instead of a floating
+pane. The help header wraps
 without changing the reply text or quote positions. Closing it
 restores source focus only if you have not deliberately moved elsewhere.
 

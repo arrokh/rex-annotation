@@ -121,13 +121,13 @@ local function source_pane(view, target)
   end
 end
 
-function M.overlay_bounds(view, target, full_width)
+function M.overlay_bounds(view, target)
   local _, rect = source_pane(view, target)
   assert(rect and #rect == 4, "Source pane geometry is unavailable; focus the target and retry")
   for _, value in ipairs(rect) do assert(type(value) == "number", "Invalid source pane geometry") end
   assert(rect[3] > 0 and rect[4] > 0, "Source pane has no visible area")
   -- Use the Rex window width, not the source split’s width.
-  local width, height = full_width and 1 or 0.5, rect[4] * 0.9
+  local width, height = 0.5, rect[4] * 0.9
   return { (1 - width) / 2, (1 - height) / 2, width, height }
 end
 
@@ -135,8 +135,16 @@ function M.restore_focus(call, target, overlay_block)
   if not overlay_block or not target.window_id then return false end
   local view = call("session.view", { session_id = target.session_id })
   local window = source_pane(view, target)
-  if not window or view.active_window_id ~= target.window_id
-    or window.focused_block_id ~= overlay_block then return false end
+  if not window then return false end
+  local active = window
+  if target.separate_tab then
+    active = nil
+    for _, candidate in ipairs(view.windows or {}) do
+      if candidate.window_id == view.active_window_id then active = candidate; break end
+    end
+  end
+  if not active or view.active_window_id ~= active.window_id
+    or active.focused_block_id ~= overlay_block then return false end
   -- Do this BEFORE the overlay process exits: automatic close chooses another
   -- tiled pane, not necessarily the pane from which annotation was requested.
   call("session.focus_block", { session_id = target.session_id, block_id = target.block_id })

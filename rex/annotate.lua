@@ -32,8 +32,8 @@ local function local_target(ctx)
   end
   return {
     session_id = ctx.session_id, block_id = ctx.block_id,
-    window_id = source.window_id, client_id = ctx.client_id, clipboard = local_mac,
-  }, source, ios
+    window_id = source.window_id, client_id = ctx.client_id, clipboard = local_mac, separate_tab = ios,
+  }
 end
 
 local function executable(name)
@@ -49,7 +49,7 @@ local function executable(name)
 end
 
 local function open_annotation(ctx)
-  local target, source, full_width = local_target(ctx)
+  local target = local_target(ctx)
   local key = ctx.session_id .. "/" .. ctx.block_id
   if pending[key] then error("An annotation view is already opening", 0) end
   pending[key] = true
@@ -65,7 +65,6 @@ local function open_annotation(ctx)
     if not core_file then error("Missing plugin helper " .. core_path .. "; reinstall rex-annotation", 0) end
     core_file:close()
     local core = dofile(core_path)
-    local bounds = core.overlay_bounds(call("session.view", { session_id = ctx.session_id }), target, full_width)
     local target_json = rex.json.encode(target)
     local program = executable("nvim")
     local view = directory .. "annotate_view.lua"
@@ -76,21 +75,31 @@ local function open_annotation(ctx)
       "--cmd", "set nomodeline noswapfile noundofile nobackup nowritebackup",
       "-c", string.format("lua dofile(%q).start(vim.json.decode(%q))", view, target_json) }
 
-    local layer = call("session.new_layer", { session_id = ctx.session_id, window_id = source.window_id,
-      bounds = bounds, focus = true,
-      layout = { block = { flavor = "com.superlogical.terminal.shell", label = label,
-        options = { shell = "none", login = false, command = command,
-          exit = { on_completion = true, quick_exit_threshold_ms = 0 } } },
-      },
-    })
+    local layout = { block = { flavor = "com.superlogical.terminal.shell", label = label,
+      options = { shell = "none", login = false, command = command,
+        exit = { on_completion = true, quick_exit_threshold_ms = 0 } } } }
+    local placement
+    if target.separate_tab then
+      placement = call("session.new_window", { session_id = ctx.session_id, window_label = "Annotations",
+        layout = layout, focus = true })
+    else
+      local bounds = core.overlay_bounds(call("session.view", { session_id = ctx.session_id }), target)
+      placement = call("session.new_layer", { session_id = ctx.session_id, window_id = target.window_id,
+        bounds = bounds, focus = true, layout = layout })
+    end
     local released, release_error = rex.call("session.disown_block", {
-      session_id = ctx.session_id, block_ids = layer.block_ids,
+      session_id = ctx.session_id, block_ids = placement.block_ids,
     })
     if not released then
-      local _, cleanup_error = rex.call("session.close_layer", { session_id = ctx.session_id, layer_id = layer.layer_id })
+      local _, cleanup_error
+      if target.separate_tab then
+        _, cleanup_error = rex.call("session.close_window", { session_id = ctx.session_id, window_id = placement.window_id })
+      else
+        _, cleanup_error = rex.call("session.close_layer", { session_id = ctx.session_id, layer_id = placement.layer_id })
+      end
       error(tostring(release_error) .. (cleanup_error and ("; cleanup failed: " .. cleanup_error) or ""), 0)
     end
-    return layer
+    return placement
   end)
   pending[key] = nil
   if not ok then error(result, 0) end
@@ -104,3 +113,5 @@ rex.action{
 }
 rex.bind("ctrl+s>o", "annotate_open")
 rex.bind("cmd+shift+o", "annotate_open")
+-- Match hardware events that identify the physical O key instead of layout text.
+rex.bind("cmd+shift+[KeyO]", "annotate_open")
