@@ -2,6 +2,10 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.15
+
+- Start the Pi annotation bridge when Rex supplies `REX_BLOCK` but omits `REX_SESSION`. Resolve the exact pane before opening the bridge.
+
 ## 0.2.14
 
 - Restore Claude Code, CUX, and Codex reply binding when Rex only provides `REX_BLOCK`. Hooks resolve the exact block’s session before validating the foreground process.

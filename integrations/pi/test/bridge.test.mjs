@@ -1,10 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm, lstat, mkdir, symlink } from 'node:fs/promises';
+import { mkdtemp, rm, lstat, mkdir, symlink, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createConnection } from 'node:net';
-import { renderBranch, renderReplies, startBridge } from '../bridge.js';
+import { renderBranch, renderReplies, startBridge, socketRoot } from '../bridge.js';
+import rexAnnotate from '../extensions/index.js';
 
 const branch = [
   { type: 'message', message: { role: 'system', content: 'HIDDEN SYSTEM' } },
@@ -58,6 +59,38 @@ function request(socketPath, payload) {
     socket.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
   });
 }
+
+test('Pi starts its bridge with REX_BLOCK alone and rejects a mismatched lookup', async () => {
+  const root = await mkdtemp(join(tmpdir(), 'rex-pi-discovery-test-'));
+  const keys = ['PATH', 'REX_BLOCK', 'REX_SESSION'];
+  const before = keys.map(key => process.env[key]);
+  const handlers = new Map();
+  const ctx = { mode: 'tui', ui: { notify() {} }, sessionManager: { getSessionId: () => 'pi-conversation' } };
+  rexAnnotate({ on: (name, handler) => handlers.set(name, handler) });
+  const setup = async block_id => writeFile(join(root, 'rex'),
+    `#!/bin/sh\nprintf '%s\\n' '${JSON.stringify({ session_id: 'session:exact', block_id })}'\n`, { mode: 0o700 });
+  const path = join(socketRoot(), `${process.pid}.sock`);
+  try {
+    process.env.PATH = `${root}:${process.env.PATH}`;
+    process.env.REX_BLOCK = 'block:exact';
+    delete process.env.REX_SESSION;
+    await setup('block:other');
+    await handlers.get('session_start')(null, ctx);
+    await assert.rejects(lstat(path), { code: 'ENOENT' });
+    await setup('block:exact');
+    await handlers.get('session_start')(null, ctx);
+    const result = await request(path, { version: 1, pid: process.pid, block: 'block:exact',
+      session: 'session:exact', op: 'status' });
+    assert.equal(result.sessionId, 'pi-conversation');
+  } finally {
+    await handlers.get('session_shutdown')();
+    keys.forEach((key, index) => {
+      if (before[index] === undefined) delete process.env[key];
+      else process.env[key] = before[index];
+    });
+    await rm(root, { recursive: true, force: true });
+  }
+});
 
 test('socket binds exact pane and current session; insert preserves newlines without submitting', async () => {
   const root = await mkdtemp(join(tmpdir(), 'rex-pi-bridge-test-'));

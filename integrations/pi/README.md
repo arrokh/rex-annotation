@@ -54,6 +54,9 @@ the operation might already have happened.
 
 ## Privacy and lifecycle
 
+If Rex supplies only `REX_BLOCK`, the bridge resolves that pane’s session
+with `rex whoami --json` on startup. It refuses a result for a different pane.
+
 The event-driven socket is `/tmp/rex-annotate-pi-<uid>/<pid>.sock`; its directory
 is private (`0700`) and the socket is `0600`. There is no TCP listener, polling,
 transcript-copy file, annotation handoff file, or automatic agent message.
