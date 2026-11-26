@@ -28,7 +28,7 @@ def _hook_input():
 
 
 def main():
-    if not os.environ.get("REX_SESSION") or not os.environ.get("REX_BLOCK"):
+    if not os.environ.get("REX_BLOCK"):
         return 0
     try:
         payload = _hook_input()
