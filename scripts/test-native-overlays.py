@@ -178,7 +178,7 @@ def run(selected=None):
                     payload = base / (launcher + action + "-hook.json")
                     payload.write_text(json.dumps({"hook_event_name":"SessionStart", "source":"startup",
                                                   "session_id":conversation, "transcript_path":str(path)}))
-                    command = ["/usr/bin/env", "-u", "REX_PID", "-u", "REX_ANNOTATION_ROOT",
+                    command = ["/usr/bin/env", "-u", "REX_PID", "-u", "REX_ANNOTATION_ROOT", "-u", "REX_SESSION",
                                "REX_ANNOTATION_STATE_DIR=" + str(state), "PYTHONDONTWRITEBYTECODE=1",
                                "REX_TEST_PYTHON=" + sys.executable, "REX_TEST_HOOK=" + str(ROOT / "integrations" / agent / "hooks/register.py"),
                                "REX_TEST_PAYLOAD=" + str(payload)]
@@ -248,7 +248,7 @@ def run(selected=None):
                         (evidence / (launcher + "-" + str(columns) + "x" + str(rows) + ".txt")).write_text(detail)
                     LIVE.terminal(session, overlay, "write", {"data":"ggV\rsynthetic note"})
                     subprocess.run(["rex", "send-key", "-s", session, "-b", overlay, "enter"], check=True, timeout=10)
-                    LIVE.wait_for(session, overlay, lambda s: "1 notes" in s)
+                    LIVE.wait_for(session, overlay, lambda s: "1 here / 1 total" in s)
                     if os.environ.get("REX_ANNOTATION_EVIDENCE_DIR"):
                         html = LIVE.terminal(session, overlay, "format", {"format":"html","unwrap":True})["content"]
                         (Path(os.environ["REX_ANNOTATION_EVIDENCE_DIR"]) / (launcher + "-" + str(columns) + "-annotated.html")).write_text(html)

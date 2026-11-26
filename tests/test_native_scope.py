@@ -52,8 +52,16 @@ class NativeScopeTests(unittest.TestCase):
         self.assertEqual(json.loads(self.log.read_text()), ["--autostart=false", "--timeout", "1s", "block", "call",
                                                            "-s", "exact-session", "-b", "exact-block", "process"])
 
+    def test_missing_session_resolves_only_the_exact_block(self):
+        self.write_rex("import sys\nif 'whoami' in sys.argv: print(" + repr(json.dumps({
+            "block_id": "exact-block", "session_id": "session:resolved",
+        })) + ")\nelse: print(" + repr(json.dumps(self.output)) + ")\n")
+        self.assertEqual(self.resolve(env={"REX_BLOCK": "exact-block"}),
+                         ("session:resolved", "exact-block", 42))
+        self.assertIsNone(self.resolve(env={"REX_BLOCK": "other-block"}))
+
     def test_outside_or_partial_rex_context_is_noop_without_query(self):
-        for env in ({}, {"REX_SESSION": "only-session"}, {"REX_BLOCK": "only-block"}):
+        for env in ({}, {"REX_SESSION": "only-session"}):
             with self.subTest(env=env), mock.patch.object(native_scope, "_run_rex_process") as query:
                 self.assertIsNone(self.resolve(env=env))
                 query.assert_not_called()

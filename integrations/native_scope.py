@@ -13,7 +13,7 @@ import subprocess
 import sys
 import time
 from collections import namedtuple
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from session_replies import ReplyError, _require_token
 
@@ -250,14 +250,17 @@ def _is_ancestor(ancestor_pid: int, ancestor_start: str, hook_pid: int, agent: s
     return False
 
 def _run_rex_process(session: str, block: str) -> Dict[str, Any]:
+    return _run_rex_query(["block", "call", "-s", session, "-b", block, "process"])
+
+
+def _run_rex_query(arguments: List[str], environ=None) -> Dict[str, Any]:
     executable = shutil.which("rex")
     if not executable:
         raise ReplyError("cannot locate the Rex executable")
-    command = [executable, "--autostart=false", "--timeout", "1s", "block", "call",
-               "-s", session, "-b", block, "process"]
+    command = [executable, "--autostart=false", "--timeout", "1s", *arguments]
     try:
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                                   stderr=subprocess.DEVNULL, close_fds=True)
+                                   stderr=subprocess.DEVNULL, close_fds=True, env=environ)
     except OSError as error:
         raise ReplyError("cannot query the Rex foreground process: {}".format(error))
 
@@ -364,10 +367,22 @@ def resolve_scope(agent: str, environ: Optional[Dict[str, str]] = None,
     if agent not in ("codex", "claude"):
         raise ReplyError("unsupported native agent")
     env = os.environ if environ is None else environ
-    if not env.get("REX_SESSION") or not env.get("REX_BLOCK"):
+    if not env.get("REX_BLOCK"):
         return None
-    session = _require_token(env["REX_SESSION"], "Rex session id")
     block = _require_token(env["REX_BLOCK"], "Rex block id")
+    session = env.get("REX_SESSION")
+    if not session:
+        # Resolve the inherited block, never the active window or default session.
+        query_env = {**os.environ, "REX_BLOCK": block}
+        query_env.pop("REX_SESSION", None)
+        try:
+            location = _run_rex_query(["whoami", "--json"], query_env)
+        except ReplyError:
+            return None
+        if location.get("block_id") != block or not isinstance(location.get("session_id"), str):
+            return None
+        session = location["session_id"]
+    session = _require_token(session, "Rex session id")
     caller = os.getpid() if hook_pid is None else hook_pid
     explicit = env.get("REX_PID")
     if explicit:

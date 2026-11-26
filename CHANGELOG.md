@@ -2,6 +2,10 @@
 
 [Project README](README.md) · [Documentation](docs/README.md)
 
+## 0.2.14
+
+- Restore Claude Code, CUX, and Codex reply binding when Rex only provides `REX_BLOCK`. Hooks resolve the exact block’s session before validating the foreground process.
+
 ## 0.2.13
 
 - Ask the Rex iPhone/iPad client to select the new Annotations tab after opening it. If the client cannot switch, the tab is still available manually.

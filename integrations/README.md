@@ -105,8 +105,10 @@ synthetic PTY supervisor and child restart; no real CUX accounts are accessed.
 
 ### Automatic Rex binding
 
-Ordinary `codex` and `claude` commands inherit `REX_SESSION` and `REX_BLOCK` from
-Rex. Hooks query that exact pane's foreground process and verify it belongs to
+Ordinary `codex` and `claude` commands inherit `REX_BLOCK` from Rex. If
+`REX_SESSION` is absent, hooks resolve the inherited block’s session with
+`rex whoami --json` and require the returned block to match. Hooks then query
+that exact pane's foreground process and verify it belongs to
 the hook's ancestor chain before registering the supplied conversation and
 transcript. They never choose a transcript by modification time, bind whichever
 pane has focus, or shadow the native CLI. Hooks outside Rex are no-ops.
